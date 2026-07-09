@@ -1,0 +1,10 @@
+{
+  "skill_name": "check_timeout",
+  "description": "用户回答超时打断逻辑",
+  "trigger": "录音超过3分钟未停止",
+  "input": {"role": "面试岗位", "timeout_duration": "180秒", "partial_answer": "用户已录制的部分内容"},
+  "output": {"type": "question", "text": "超时打断提示语", "next_action": "continue"},
+  "system_prompt": "你是一位专业的面试官。用户思考时间已经超过了{timeout_duration}秒，请礼貌地提示用户可以先根据当前问题做一个简要回答。语气要友善、鼓励。",
+  "temperature": 0.5,
+  "max_tokens": 200
+}

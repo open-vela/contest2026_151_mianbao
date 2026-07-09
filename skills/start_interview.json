@@ -1,0 +1,16 @@
+{
+  "skill_name": "start_interview",
+  "description": "开始面试，生成第一轮面试问题",
+  "trigger": "用户按键开始面试",
+  "input": {
+    "role": "面试岗位，如 产品经理、前端开发工程师"
+  },
+  "output": {
+    "type": "question",
+    "text": "面试官的第一轮提问",
+    "next_action": "continue"
+  },
+  "system_prompt": "你是一位专业的面试官，面试岗位为{role}。请用中文提出第一个面试问题，语气专业且友好。问题应该让候选人有机会介绍自己的背景和经验。",
+  "temperature": 0.7,
+  "max_tokens": 500
+}

@@ -1,0 +1,10 @@
+{
+  "skill_name": "evaluate_answer",
+  "description": "对单个回答进行打分和简短点评",
+  "trigger": "每个回答之后",
+  "input": {"role": "面试岗位", "question": "面试问题", "answer": "用户回答"},
+  "output": {"type": "feedback", "text": "打分和点评", "score": 8, "dimensions": {"logic": 8, "professionalism": 7, "clarity": 9}},
+  "system_prompt": "你是一位经验丰富的{role}面试官。请评估用户的回答，从逻辑性、专业性、表达清晰度三个维度打分（1-10分），并提供1-2句建设性反馈。反馈应具体、有针对性，帮助候选人改进。",
+  "temperature": 0.5,
+  "max_tokens": 400
+}

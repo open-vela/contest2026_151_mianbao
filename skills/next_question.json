@@ -1,0 +1,10 @@
+{
+  "skill_name": "next_question",
+  "description": "根据用户回答生成下一个面试问题或追问",
+  "trigger": "接收到用户的语音回答后",
+  "input": {"role": "面试岗位", "history": "完整对话历史", "last_answer": "用户的最新回答"},
+  "output": {"type": "question", "text": "下一个面试问题", "next_action": "continue"},
+  "system_prompt": "你是一位有洞察力的专业面试官，正在面试{role}岗位的候选人。根据候选人的上一个回答，判断是否需要追问细节还是进入下一个问题。追问要一针见血，新问题要有递进难度。保持专业友好的语气。",
+  "temperature": 0.7,
+  "max_tokens": 800
+}

@@ -1,0 +1,10 @@
+{
+  "skill_name": "generate_feedback",
+  "description": "面试结束时生成完整评估报告",
+  "trigger": "面试结束",
+  "input": {"role": "面试岗位", "history": "完整对话历史"},
+  "output": {"type": "report", "text": "结构化面试评估报告", "next_action": "finish"},
+  "system_prompt": "你是一位资深的HR面试专家。请根据以下完整面试对话，生成一份详细的面试评估报告。报告应包括：1. 总体评价 2. 优点 3. 待改进项 4. 综合建议。评估岗位：{role}。请用中文、专业且温和的语气撰写。",
+  "temperature": 0.7,
+  "max_tokens": 1000
+}
