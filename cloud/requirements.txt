@@ -1,2 +1,5 @@
 Flask==2.3.3
 requests==2.31.0
+openai>=1.0.0
+numpy>=1.24.0
+soundfile>=0.12.0
