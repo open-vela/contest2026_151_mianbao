@@ -10,7 +10,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 # 小米 MIMO API 配置（与 ASR/TTS 统一）
-MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "sk-c31fef0fmk0aq1avis1f73xpekskcl6dyoixaobw8z2y63qn")
+MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 MIMO_BASE_URL = "https://api.xiaomimimo.com/v1"
 LLM_MODEL = "mimo-v2.5"
 

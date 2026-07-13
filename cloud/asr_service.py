@@ -11,7 +11,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 # xiaomi mimo API 配置
-MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "sk-c31fef0fmk0aq1avis1f73xpekskcl6dyoixaobw8z2y63qn")
+MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 MIMO_BASE_URL = "https://api.xiaomimimo.com/v1"
 ASR_MODEL = "mimo-v2.5-asr"
 

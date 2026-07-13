@@ -90,15 +90,15 @@ pip install -r requirements.txt
 
 ### 4.2 API 配置
 
-小米 MIMO API Key 已配置在代码中（仅用于开发测试）：
+使用环境变量配置小米 MIMO API Key：
 
-```python
-MIMO_API_KEY = "sk-c31fef0fmk0aq1avis1f73xpekskcl6dyoixaobw8z2y63qn"
+```bash
+export MIMO_API_KEY="sk-xxxxxxxxxxxxxxxx"
 ```
 
-**注意：** 生产环境请使用环境变量：
-```bash
-export MIMO_API_KEY="your_api_key_here"
+**代码中的读取方式：**
+```python
+MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 ```
 
 ---
