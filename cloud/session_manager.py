@@ -18,7 +18,7 @@ class InterviewSession:
         self.history.append({"role": "user", "content": text})
         self.updated_at = time.time()
     def add_ai_message(self, text: str):
-        self.history.append({"role": "ai", "content": text})
+        self.history.append({"role": "assistant", "content": text})
         self.question_count += 1
         self.updated_at = time.time()
     def get_history(self):

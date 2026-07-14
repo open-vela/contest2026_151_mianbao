@@ -1,9 +1,10 @@
 """
-AI模拟面试官 — 云端 Flask 服务
+AI模拟面试官 — 云端 Flask 服务（纯后端 API）
 """
 from flask import Flask, request, jsonify
 import uuid
 import logging
+from datetime import datetime
 from llm_service import llm_interview
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
@@ -14,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 session_manager = SessionManager()
+
+# 简单的历史记录存储（生产环境应使用数据库）
+interview_history = []
 
 
 @app.route('/api/interview', methods=['POST'])
@@ -29,16 +33,17 @@ def handle_interview():
         role = data.get('role', '产品经理')
         state = data.get('state', '')
         history = data.get('history', [])
+        style = data.get('style', 'standard')
+        user_text = data.get('user_text', '')
 
         if not session_id:
             session_id = str(uuid.uuid4())
-            logger.info(f"创建新会话: {session_id}")
+            logger.info(f"创建新会话: {session_id}, 岗位: {role}, 风格: {style}")
 
         # 获取或创建会话
         session = session_manager.get_or_create_session(session_id, role)
 
         # 如果有音频数据，先进行 ASR 识别
-        user_text = ""
         if audio_base64 and state == "recording_finished":
             logger.info(f"[session={session_id}] 开始 ASR 识别...")
             user_text = asr_audio_to_text(audio_base64, audio_format, "zh")
@@ -47,6 +52,9 @@ def handle_interview():
                 session.add_user_message(user_text)
             else:
                 logger.warning(f"[session={session_id}] ASR 识别失败")
+        elif user_text and state == "recording_finished":
+            # 如果前端直接提供了文字回答（网页模式）
+            session.add_user_message(user_text)
 
         # 调用 LLM 生成回复
         logger.info(f"[session={session_id}] 调用 LLM...")
@@ -70,7 +78,7 @@ def handle_interview():
             "tts_audio": tts_audio_base64,
             "session_id": session_id,
             "next_action": next_action,
-            "user_text": user_text  # 返回 ASR 识别结果，便于调试
+            "user_text": user_text
         })
 
     except Exception as e:

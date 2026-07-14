@@ -1,14 +1,14 @@
-# AI模拟面试官 — 云端服务
+# AI模拟面试官 — 云端服务（纯后端 API）
 
-> 负责：A同学  
-> 更新时间：2026-07-12  
+> 负责：C同学
+> 更新时间：2026-07-14
 > 正式开发开始：2026-07-16
 
 ---
 
 ## 一、项目简介
 
-本目录包含 AI 模拟面试官的**云端服务**，基于 Flask 框架构建，集成小米 MIMO API 提供 ASR（语音识别）和 TTS（语音合成）能力。
+本目录包含 AI 模拟面试官的**云端后端服务**，基于 Flask 框架构建，集成小米 MIMO API 提供 ASR（语音识别）、TTS（语音合成）和 LLM（大语言模型）能力。Web 前端界面已迁移至 `test-project/web_frontend/` 目录。
 
 ---
 
@@ -16,7 +16,7 @@
 
 ```
 cloud/
-├── app.py                  # Flask 主程序（云端 API 入口）
+├── app.py                  # Flask 主程序（纯后端 API）
 ├── asr_service.py          # ASR 语音识别服务
 ├── tts_service.py          # TTS 语音合成服务
 ├── llm_service.py          # LLM 大语言模型服务
@@ -26,9 +26,6 @@ cloud/
 ├── test_services.py        # ASR/TTS 服务测试脚本
 ├── play_tts.py             # TTS 语音播放工具
 ├── demo_interview.py       # 面试流程演示脚本
-│
-├── test_tts_output.wav     # TTS 非流式测试音频（示例）
-├── test_tts_stream_output.wav  # TTS 流式测试音频（示例）
 │
 └── README.md               # 本文件
 ```
@@ -139,11 +136,43 @@ python3 demo_interview.py
 python3 demo_interview.py --full
 ```
 
-### 5.4 启动 Flask 服务（待完善）
+### 5.4 启动 Flask 服务
 
 ```bash
+# 设置 API Key
+export MIMO_API_KEY="sk-你的API密钥"
+
+# 启动服务
 python3 app.py
 ```
+
+服务启动后，可以访问以下地址：
+- **Web 管理界面**: http://localhost:5000
+- **API 接口**: http://localhost:5000/api/
+- **健康检查**: http://localhost:5000/api/health
+
+### 5.5 使用 Web 界面
+
+1. **访问管理界面**
+   在浏览器中打开 `http://服务器IP:5000`
+
+2. **开始面试**
+   - 选择面试岗位（产品经理、前端开发、后端开发等）
+   - 选择面试风格（标准、压力、友好、技术）
+   - 点击"开始面试"按钮
+
+3. **进行面试**
+   - 在输入框中输入你的回答
+   - 点击"提交回答"或按回车键
+   - AI 面试官会自动生成下一个问题
+
+4. **查看评价**
+   - 面试结束后，系统会自动生成评价报告
+   - 包含综合评分、各维度评分和详细评价
+
+5. **查看历史**
+   - 右侧面板显示历史面试记录
+   - 点击记录可查看详情
 
 ---
 
@@ -171,6 +200,34 @@ client = OpenAI(
 
 - **播放**：`paplay`（PulseAudio）或 `aplay`（ALSA）
 - **录音**：`arecord`（ALSA），16kHz，16-bit，单声道
+
+### 6.4 Web 界面技术说明
+
+**技术栈**：
+- 前端：原生 HTML + CSS + JavaScript（单文件，无依赖）
+- 后端：Flask + RESTful API
+- 通信：Fetch API + JSON
+
+**主要功能**：
+| 功能 | 说明 |
+|------|------|
+| 面试控制 | 选择岗位、风格，开始/结束面试 |
+| 实时对话 | 显示面试问答过程 |
+| 评价报告 | 展示综合评分和详细评价 |
+| 历史记录 | 查看过往面试记录 |
+
+**API 端点**：
+```
+GET  /                  # Web 管理界面
+GET  /api/health        # 健康检查
+POST /api/interview     # 面试问答接口
+GET  /api/history       # 获取历史记录
+```
+
+**页面布局**：
+- 左侧面板：面试控制、对话区域
+- 右侧面板：评价报告、历史记录
+- 响应式设计：支持移动端访问
 
 ---
 

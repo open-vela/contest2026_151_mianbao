@@ -1,0 +1,29 @@
+#
+# AI模拟面试官集成测试 Kconfig 配置
+#
+
+config APP_AI_INTERVIEW_TEST
+	tristate "AI Interview Integration Test"
+	default y
+	---help---
+		Enable the AI Interview integration test.
+		This is a simple test to verify the build system
+		integration works correctly.
+
+if APP_AI_INTERVIEW_TEST
+
+config APP_AI_INTERVIEW_TEST_PROGNAME
+	string "Program name"
+	default "ai_interview_test"
+	---help---
+		This is the name of the program for NSH.
+
+config APP_AI_INTERVIEW_TEST_PRIORITY
+	int "Task priority"
+	default 100
+
+config APP_AI_INTERVIEW_TEST_STACKSIZE
+	int "Stack size"
+	default 4096
+
+endif

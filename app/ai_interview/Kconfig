@@ -1,0 +1,29 @@
+#
+# AI模拟面试官 Kconfig 配置
+#
+
+config APP_AI_INTERVIEW
+	tristate "AI Interview Simulator"
+	default y
+	---help---
+		Enable the AI Interview Simulator application.
+		This app provides voice-based interview simulation
+		using cloud-based ASR/TTS/LLM services.
+
+if APP_AI_INTERVIEW
+
+config APP_AI_INTERVIEW_PROGNAME
+	string "Program name"
+	default "ai_interview"
+	---help---
+		This is the name of the program for NSH.
+
+config APP_AI_INTERVIEW_PRIORITY
+	int "Task priority"
+	default 100
+
+config APP_AI_INTERVIEW_STACKSIZE
+	int "Stack size"
+	default 8192
+
+endif

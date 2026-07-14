@@ -1,0 +1,7 @@
+############################################################################
+# app/ai_interview_test/Make.defs
+############################################################################
+
+ifneq ($(CONFIG_APP_AI_INTERVIEW_TEST),)
+CONFIGURED_APPS += $(APPDIR)/examples/ai_interview_test
+endif
