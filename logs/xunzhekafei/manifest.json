@@ -3,7 +3,7 @@
   "team_id": "contest2026_151_mianbao",
   "github_login": "xunzhekafei",
   "generator": "claude-code-collector@1.2.0",
-  "updated_at": "2026-07-24T14:17:13.165Z",
+  "updated_at": "2026-07-24T14:25:49.874Z",
   "sessions": [
     {
       "session_id": "96bccb07-df89-429f-bb07-fdc4b7a1449c",
@@ -83,9 +83,9 @@
       "session_id": "1a38b2a6-ea16-4e67-b6f3-5b736ed43504",
       "tool": "claude-code",
       "started_at": "2026-07-24T13:49:06.159Z",
-      "last_event_at": "2026-07-24T14:17:13.162Z",
-      "event_count": 314,
-      "raw_event_count": 441,
+      "last_event_at": "2026-07-24T14:25:49.871Z",
+      "event_count": 320,
+      "raw_event_count": 460,
       "file_path": "logs/xunzhekafei/2026-07-24/claude-code__1a38b2a6-ea16-4e67-b6f3-5b736ed43504.jsonl",
       "collection_mode": "cli",
       "health": "ok",
