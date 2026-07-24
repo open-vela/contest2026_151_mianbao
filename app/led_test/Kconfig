@@ -1,0 +1,29 @@
+#
+# LED GPIO 测试程序 Kconfig 配置
+#
+
+config LED_TEST
+	tristate "LED GPIO Test"
+	default y
+	---help---
+		LED GPIO test program to identify which GPIO pins control the LEDs.
+		Run this program to test GPIO0-GPIO19 and observe which pins
+		control the LEDs on the board.
+
+if LED_TEST
+
+config LED_TEST_PROGNAME
+	string "Program name"
+	default "led_test"
+	---help---
+		This is the name of the program for NSH.
+
+config LED_TEST_PRIORITY
+	int "Task priority"
+	default 100
+
+config LED_TEST_STACKSIZE
+	int "Stack size"
+	default 2048
+
+endif

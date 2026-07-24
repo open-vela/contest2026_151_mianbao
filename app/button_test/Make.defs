@@ -1,0 +1,7 @@
+############################################################################
+# app/button_test/Make.defs
+############################################################################
+
+ifneq ($(CONFIG_BUTTON_TEST),)
+CONFIGURED_APPS += $(APPDIR)/examples/button_test
+endif

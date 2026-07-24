@@ -3,7 +3,7 @@
   "team_id": "contest2026_151_mianbao",
   "github_login": "xunzhekafei",
   "generator": "claude-code-collector@1.2.0",
-  "updated_at": "2026-07-13T15:04:22.316Z",
+  "updated_at": "2026-07-24T14:17:13.165Z",
   "sessions": [
     {
       "session_id": "96bccb07-df89-429f-bb07-fdc4b7a1449c",
@@ -54,6 +54,42 @@
       "health": "ok",
       "model": "mimo-v2.5-pro",
       "redacted_count_total": 14
+    },
+    {
+      "session_id": "f224cd3d-3097-466f-a744-4c6bab441283",
+      "tool": "claude-code",
+      "started_at": "2026-07-24T09:13:31.914Z",
+      "last_event_at": "2026-07-24T09:36:21.761Z",
+      "event_count": 83,
+      "raw_event_count": 149,
+      "file_path": "logs/xunzhekafei/2026-07-24/claude-code__f224cd3d-3097-466f-a744-4c6bab441283.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "mimo-v2.5-pro"
+    },
+    {
+      "session_id": "446c32f7-b0af-4f70-ae30-aff62d9a6763",
+      "tool": "claude-code",
+      "started_at": "2026-07-24T09:40:42.437Z",
+      "last_event_at": "2026-07-24T11:21:33.263Z",
+      "event_count": 421,
+      "raw_event_count": 627,
+      "file_path": "logs/xunzhekafei/2026-07-24/claude-code__446c32f7-b0af-4f70-ae30-aff62d9a6763.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "mimo-v2.5"
+    },
+    {
+      "session_id": "1a38b2a6-ea16-4e67-b6f3-5b736ed43504",
+      "tool": "claude-code",
+      "started_at": "2026-07-24T13:49:06.159Z",
+      "last_event_at": "2026-07-24T14:17:13.162Z",
+      "event_count": 314,
+      "raw_event_count": 441,
+      "file_path": "logs/xunzhekafei/2026-07-24/claude-code__1a38b2a6-ea16-4e67-b6f3-5b736ed43504.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "mimo-v2.5"
     }
   ]
 }

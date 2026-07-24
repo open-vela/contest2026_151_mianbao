@@ -1,0 +1,29 @@
+#
+# 按键 GPIO 测试程序 Kconfig 配置
+#
+
+config BUTTON_TEST
+	tristate "Button GPIO Test"
+	default y
+	---help---
+		Button GPIO test program to identify which GPIO pins control the buttons.
+		Run this program to test GPIO0-GPIO5 and observe which pins
+		change state when buttons are pressed.
+
+if BUTTON_TEST
+
+config BUTTON_TEST_PROGNAME
+	string "Program name"
+	default "button_test"
+	---help---
+		This is the name of the program for NSH.
+
+config BUTTON_TEST_PRIORITY
+	int "Task priority"
+	default 100
+
+config BUTTON_TEST_STACKSIZE
+	int "Stack size"
+	default 2048
+
+endif

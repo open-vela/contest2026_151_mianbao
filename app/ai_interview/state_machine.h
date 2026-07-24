@@ -44,5 +44,6 @@ void state_machine_post_event(system_event_t event);
 system_state_t state_machine_get_current_state(void);
 void led_set(led_color_t color, led_mode_t mode);
 int state_machine_is_busy(void);
+void state_machine_update_led(void);
 
 #endif /* __STATE_MACHINE_H__ */

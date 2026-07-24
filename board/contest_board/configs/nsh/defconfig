@@ -1,3 +1,7 @@
 # Minimal placeholder defconfig for contest2026_000_board.
 # Not intended to boot real hardware; sample only.
 CONFIG_ARCH_BOARD_CONTEST2026_000_BOARD=y
+
+# GPIO 支持
+CONFIG_DEV_GPIO=y
+CONFIG_IOEXPANDER=y
