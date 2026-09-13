@@ -41,18 +41,41 @@
 #  define CONFIG_APP_AI_INTERVIEW_WORKER_STACKSIZE 262144
 #endif
 
+/* 判断是不是一个可用的完整 URL（http 或 https，且协议后有内容）*/
+static inline int app_url_is_valid(const char *u)
+{
+    const char *rest;
+
+    if (u == NULL) {
+        return 0;
+    }
+
+    if (strncmp(u, "https://", 8) == 0) {
+        rest = u + 8;
+    } else if (strncmp(u, "http://", 7) == 0) {
+        rest = u + 7;
+    } else {
+        return 0;
+    }
+
+    return rest[0] != '\0';
+}
+
 /*
  * 取云端 base 地址。
  * 环境变量 CLOUD_URL 优先于 Kconfig：演示当天换服务器只需
  *   nsh> set CLOUD_URL http://192.168.1.23:5000
  * 不必重新编译烧录（内置应用会继承 NSH 的环境变量）。
+ *
+ * 同样接受 https:// —— 走内网穿透或公网部署时给的就是 https 地址。
+ * 端侧能跑 TLS：CONFIG_LIB_CURL 会带入 mbedtls。
  */
 static inline const char *app_cloud_base_url(void)
 {
     const char *env = getenv("CLOUD_URL");
 
     /* 只接受带协议的完整地址，避免把空串或半截地址当成有效配置 */
-    if (env != NULL && strncmp(env, "http://", 7) == 0 && env[7] != '\0') {
+    if (app_url_is_valid(env)) {
         return env;
     }
 

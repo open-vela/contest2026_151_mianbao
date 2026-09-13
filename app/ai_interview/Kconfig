@@ -50,6 +50,25 @@ config APP_AI_INTERVIEW_ROLE
 	string "Interview role"
 	default "产品经理"
 
+config APP_AI_INTERVIEW_TLS_INSECURE
+	bool "Skip TLS certificate verification (demo only)"
+	default n
+	---help---
+		Leave this OFF unless you must talk to the cloud over https
+		and have no CA bundle on the device.
+
+		This board's rootfs ships no CA certificates
+		(CONFIG_LIB_CURL_CA_PATH points at /etc/ssl/curl, which does
+		not exist), so an https:// URL will fail the handshake with
+		verification on. Prefer installing a CA bundle and setting
+		CURLOPT_CAINFO instead of enabling this.
+
+		Turning this on disables certificate verification, which makes
+		the connection vulnerable to man-in-the-middle attacks. Only
+		acceptable when pointed at your own server for a demo.
+
+		Has no effect when the cloud URL uses plain http://.
+
 config APP_AI_INTERVIEW_MAX_RECORD_SECONDS
 	int "Max recording seconds per round"
 	default 30
