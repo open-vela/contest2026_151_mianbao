@@ -216,8 +216,9 @@ audio_io.c.home.ubuntu.openvela_contest.contest2026_151_mianbao.app.ai_interview
  /home/ubuntu/vela-opensource/apps/vendor/allwinnertech/chips/r528/drivers/rtos-hal/include/hal/sound/card.h \
  /home/ubuntu/vela-opensource/apps/vendor/allwinnertech/chips/r528/drivers/rtos-hal/include/hal/sound/pcm_common.h \
  /home/ubuntu/vela-opensource/apps/vendor/allwinnertech/chips/r528/drivers/rtos-hal/include/osal/hal_mutex.h \
- /home/ubuntu/vela-opensource/nuttx/include/syslog.h audio/common.h \
- audio_io.h app_config.h
+ /home/ubuntu/vela-opensource/nuttx/include/syslog.h \
+ /home/ubuntu/vela-opensource/apps/vendor/allwinnertech/chips/r528/drivers/rtos-hal/include/hal/aw-alsa-lib/control.h \
+ audio/common.h audio_io.h app_config.h
 main.c.home.ubuntu.openvela_contest.contest2026_151_mianbao.app.ai_interview.o: \
  main.c /home/ubuntu/vela-opensource/nuttx/include/nuttx/config.h \
  /home/ubuntu/vela-opensource/nuttx/include/stdio.h \
