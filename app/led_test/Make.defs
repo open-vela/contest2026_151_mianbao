@@ -3,5 +3,5 @@
 ############################################################################
 
 ifneq ($(CONFIG_LED_TEST),)
-CONFIGURED_APPS += $(APPDIR)/examples/led_test
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_151_led_test
 endif

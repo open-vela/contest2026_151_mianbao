@@ -12,5 +12,11 @@
     <linkfile src="app/hello_app" dest="packages/demos/contest2026_151_hello_app"/>
     <linkfile src="quickapp/hello_quickapp" dest="packages/apps/contest2026_151_hello_quickapp"/>
     <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_151_board"/>
+
+    <!-- 队伍作品：AI 模拟面试官（端侧应用） -->
+    <linkfile src="app/ai_interview" dest="packages/demos/contest2026_151_ai_interview"/>
+    <linkfile src="app/ai_interview_test" dest="packages/demos/contest2026_151_ai_interview_test"/>
+    <linkfile src="app/led_test" dest="packages/demos/contest2026_151_led_test"/>
+    <linkfile src="app/button_test" dest="packages/demos/contest2026_151_button_test"/>
   </project>
 </manifest>
