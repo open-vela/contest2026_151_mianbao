@@ -19,6 +19,13 @@
 #define CLOUD_ERR_BAD_AUDIO  (-4)   /* base64 解码后不是可播放的 WAV */
 #define CLOUD_ERR_NOMEM      (-5)   /* 内存不足 */
 
+/*
+ * 返回码的可读名字，用于串口日志。
+ * 原来日志里只有 "-1"、"-3" 这种数字，现场排查要回头翻头文件才知道是什么，
+ * 演示时更没法一眼看出问题出在网络还是内容。
+ */
+const char *cloud_strerror(int rc);
+
 /* 请求参数 */
 typedef struct {
     const char    *session_id;  /* "" 或 NULL 表示让云端新建会话 */

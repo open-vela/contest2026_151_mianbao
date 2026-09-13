@@ -97,6 +97,7 @@ static int codec_configure(void)
 #define AI_SILENCE_CHUNKS      20   /* 连续 2 秒静音 -> 认为说完了 */
 #define AI_MIN_SPEECH_CHUNKS    3   /* 至少 300ms 人声才允许被静音截断 */
 #define AI_NOSPEECH_CHUNKS     50   /* 5 秒还没出声 -> 判定没人说话 */
+#define AI_LONG_SILENCE_CHUNKS 40   /* 4 秒：出过声但人声没攒够时的强制收尾 */
 
 static void put_le32(uint8_t *p, uint32_t v)
 {
@@ -121,6 +122,34 @@ static uint32_t get_le32(const uint8_t *p)
 static uint16_t get_le16(const uint8_t *p)
 {
     return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+/*
+ * 整数平方根（牛顿迭代）。
+ *
+ * 只用来把均方换算成与静音门限同量纲的 RMS，好让日志里的数值能直接跟
+ * 门限对照 —— 否则打出来的是均方，门限是 RMS，两者差一个平方，现场
+ * 调参时极易误判。
+ *
+ * 自己实现而不是调 sqrt()：避免为这一个函数引入 libm 依赖。
+ */
+static unsigned int isqrt_u32(uint32_t v)
+{
+    uint32_t x;
+    uint32_t y;
+
+    if (v == 0) {
+        return 0;
+    }
+
+    x = v;
+    y = (x + 1) / 2;
+    while (y < x) {
+        x = y;
+        y = (x + v / x) / 2;
+    }
+
+    return (unsigned int)x;
 }
 
 /* 写 44 字节标准 PCM WAV 头 */
@@ -217,6 +246,8 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
     const unsigned int in_frame_bytes = in_ch * (AI_REC_BITS / 8);
     const unsigned int out_frame_bytes = AI_REC_CHANNELS * (AI_REC_BITS / 8);
     const unsigned int gain = app_mic_gain();
+    const unsigned int thr = app_silence_threshold();
+    const unsigned int max_sec = app_max_record_seconds();
     const unsigned chunk_frames = AI_REC_RATE / (1000 / AI_CHUNK_MS);
     int silence_run = 0;
     int speech_chunks = 0;
@@ -224,13 +255,24 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
     ai_rec_result_t result = AI_REC_OK;
     int rc;
 
+    /* 每秒统计用。整秒 RMS 要累计这一秒**所有采样点**的平方和，
+     * 单块极值则用来定门限：要看的是"说话时最低掉到多少、安静时最高
+     * 冒到多少"，平均值会把两头的边界抹平，看不到余量。 */
+    long long sec_sum2 = 0;
+    long long sec_n = 0;
+    unsigned int sec_min = 0;   /* 用 unsigned int 而非 uint32_t：本目标上
+                                 * uint32_t 是 unsigned long，与 %u 不匹配 */
+    unsigned int sec_max = 0;
+    int sec_chunks = 0;
+    int sec_speech = 0;
+    int sec_no = 0;
+
     if (out == NULL || out_len == NULL) {
         return AI_REC_ERROR;
     }
 
     /* 录音缓冲按**单声道**尺寸分配：采集到的多声道会下混后再写入 */
-    cap = (size_t)CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS *
-          AI_REC_RATE * out_frame_bytes;
+    cap = (size_t)max_sec * AI_REC_RATE * out_frame_bytes;
     buf = malloc(44 + cap);
     if (buf == NULL) {
         printf("[Audio] 录音缓冲分配失败 (%u 字节)\n", (unsigned)(44 + cap));
@@ -273,9 +315,8 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         return AI_REC_ERROR;
     }
 
-    printf("[Audio] 开始录音（静音 %.1f 秒自动结束，最长 %d 秒）\n",
-           (double)AI_SILENCE_CHUNKS * AI_CHUNK_MS / 1000.0,
-           CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS);
+    printf("[Audio] 开始录音（静音 %.1f 秒自动结束，最长 %u 秒，门限 RMS %u）\n",
+           (double)AI_SILENCE_CHUNKS * AI_CHUNK_MS / 1000.0, max_sec, thr);
 
     for (;;) {
         const int16_t *src;
@@ -328,30 +369,75 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         }
         pcm_len += (size_t)rc * out_frame_bytes;
 
-        /* 静音判定：整块均方与门限平方比较，避免开方与浮点 */
-        if (sum2 > (long long)CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD *
-                   CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD * rc) {
+        /* 静音判定：均方与门限平方比，等价于"RMS 是否超过门限"，
+         * 但省掉了每块的平方根 */
+        if (sum2 > (long long)thr * thr * rc) {
             silence_run = 0;
             speech_chunks++;
+            sec_speech++;
         } else {
             silence_run++;
         }
         chunks++;
 
-        /* 每 10 块（1 秒）打一次实测均方，方便现场调阈值 */
-        if (chunks % 10 == 0) {
-            printf("[Audio] %d 秒, 本块均方≈%d, 人声占比 %d%%\n",
-                   chunks / 10,
-                   (int)(rc > 0 ? (long long)(sum2 / rc) : 0),
-                   chunks ? speech_chunks * 100 / chunks : 0);
+        /* 累计本秒的统计量。
+         * 注意量的是**施加增益之后**的波形，所以调过 MIC_GAIN 之后
+         * 门限要跟着同比例改（增益翻倍 -> RMS 翻倍 -> 门限也要翻倍）。 */
+        {
+            unsigned int chunk_rms =
+                isqrt_u32((uint32_t)(rc > 0 ? (long long)(sum2 / rc) : 0));
+
+            sec_sum2 += sum2;
+            sec_n += rc;
+            if (sec_chunks == 0 || chunk_rms < sec_min) {
+                sec_min = chunk_rms;
+            }
+            if (chunk_rms > sec_max) {
+                sec_max = chunk_rms;
+            }
+            sec_chunks++;
+        }
+
+        /* 每满 1 秒打一行，数值可与上面打印的门限直接对照。
+         *
+         * 这里的整秒 RMS 是这一秒**全部采样点**的平均。原来打的是"这一秒
+         * 最后一块"的瞬时值，于是出现过 "RMS≈212 但人声占比 60%" 这种
+         * 自相矛盾的行 —— 累计占比配瞬时 RMS，两个口径对不上。
+         * 人声占比同理改成**本秒**的，含义才和同一行里的 RMS 一致。 */
+        if (sec_chunks >= (int)(1000 / AI_CHUNK_MS)) {
+            unsigned int sec_rms =
+                isqrt_u32((uint32_t)(sec_n > 0 ? sec_sum2 / sec_n : 0));
+
+            printf("[Audio] %d 秒, RMS 平均 %u [最低 %u, 最高 %u] (门限 %u), "
+                   "本秒人声 %d%%\n",
+                   ++sec_no, sec_rms, sec_min, sec_max, thr,
+                   sec_speech * 100 / sec_chunks);
+
+            sec_sum2 = 0;
+            sec_n = 0;
+            sec_min = 0;
+            sec_max = 0;
+            sec_chunks = 0;
+            sec_speech = 0;
         }
 
         if (speech_chunks == 0 && chunks >= AI_NOSPEECH_CHUNKS) {
             result = AI_REC_NOSPEECH;
             break;
         }
-        if (speech_chunks >= AI_MIN_SPEECH_CHUNKS &&
-            silence_run >= AI_SILENCE_CHUNKS) {
+        /* 收尾条件，两条取或：
+         *
+         * 正常路径 —— 说过话（累计 >=300ms）之后连续静音 2 秒。
+         *
+         * 兜底路径 —— speech_chunks 是**累计**值，说一句很短的"喂喂"只产生
+         * 2 块超门限的音频，永远够不到 AI_MIN_SPEECH_CHUNKS，上面那条就
+         * 再也不成立；而 speech_chunks == 0 的无人声兜底也失效了（是 2 不是 0）。
+         * 实测此情形下紧接着 8 秒静音都没能收尾，一路录到 16.5 秒，只能靠
+         * 用户再次出声把累计值顶上去。所以只要出过声，静音够长就强制结束。
+         */
+        if ((speech_chunks >= AI_MIN_SPEECH_CHUNKS &&
+             silence_run >= AI_SILENCE_CHUNKS) ||
+            (speech_chunks > 0 && silence_run >= AI_LONG_SILENCE_CHUNKS)) {
             result = AI_REC_OK;
             break;
         }

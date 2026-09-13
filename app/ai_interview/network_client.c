@@ -36,6 +36,19 @@ static char g_url_interview[192];
 static char g_url_health[192];
 static int  g_initialized = 0;
 
+const char *cloud_strerror(int rc)
+{
+    switch (rc) {
+        case CLOUD_OK:              return "成功";
+        case CLOUD_ERR_HTTP:        return "HTTP 传输失败或非 2xx（多半是网络不通）";
+        case CLOUD_ERR_JSON:        return "响应不是合法 JSON 或结构不符协议";
+        case CLOUD_ERR_EMPTY_TTS:   return "tts_audio 为空（云端多半缺 API key）";
+        case CLOUD_ERR_BAD_AUDIO:   return "解码后不是可播放的 WAV";
+        case CLOUD_ERR_NOMEM:       return "内存不足";
+        default:                    return "未知错误";
+    }
+}
+
 /* ---------- 响应缓冲 ---------- */
 
 struct mem_chunk {

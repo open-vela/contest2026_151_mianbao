@@ -46,7 +46,8 @@ static int g_key2_last = 1;
 static int g_key3_last = 1;
 
 #define MAIN_LOOP_MS      100
-#define UPLOAD_MAX_RETRY  2
+#define UPLOAD_MAX_RETRY  3
+#define UPLOAD_RETRY_SEC  3
 
 /* ---- 主线程 -> 工作线程 ---- */
 typedef enum {
@@ -119,7 +120,7 @@ static int upload_once(const uint8_t *wav, size_t wav_len, cloud_response_t *res
     req.session_id = sid;
     req.wav = wav;
     req.wav_len = wav_len;
-    req.role = CONFIG_APP_AI_INTERVIEW_ROLE;
+    req.role = app_role();
     req.state = "recording_finished";
 
     return cloud_send_audio(&req, resp);
@@ -153,12 +154,20 @@ static void run_one_round(void)
         if (rc == CLOUD_OK) {
             break;
         }
-        printf("[Main] 上传失败(%d)，第 %d/%d 次: %d\n",
-               rc, attempt, UPLOAD_MAX_RETRY, rc);
+
+        printf("[Main] 上传失败: %s（第 %d/%d 次）\n",
+               cloud_strerror(rc), attempt, UPLOAD_MAX_RETRY);
+
         if (rc == CLOUD_ERR_EMPTY_TTS) {
             break;      /* 云端缺 key 之类，重试没意义 */
         }
-        sleep(1);
+
+        /* 间隔从 1 秒拉长到 3 秒：板子的 Wi-Fi 掉线后会重新做 WPA 握手，
+         * 实测这个过程要几秒，1 秒的间隔等不到链路恢复，两次重试都会瞬间失败。
+         * 最后一轮失败就没必要再等了。 */
+        if (attempt < UPLOAD_MAX_RETRY) {
+            sleep(UPLOAD_RETRY_SEC);
+        }
     }
 
     free(wav);
@@ -182,6 +191,11 @@ static void run_one_round(void)
     }
     pthread_mutex_unlock(&g_lock);
 
+    /* ASR 原文单独打一行。之前只打面试官的回复，只能从回复里反推它有没有
+     * 听对 —— 万一识别错了，看起来就像"模型答非所问"，会把排查方向带偏。 */
+    printf("[Main] 我听到你说: %s\n",
+           (resp.user_text != NULL && resp.user_text[0] != '\0')
+               ? resp.user_text : "(空)");
     printf("[Main] 面试官: %s\n", resp.text ? resp.text : "(无文本)");
 
     app_post_event(EVENT_UPLOAD_SUCCESS);    /* UPLOADING -> PLAYING */
@@ -251,6 +265,36 @@ static void *pipeline_worker(void *arg)
 
 /* ---------- 按键 ---------- */
 
+static int read_button(int fd)
+{
+    bool value = false;
+
+    if (fd < 0) {
+        return -1;
+    }
+    ioctl(fd, GPIOC_READ, (unsigned long)((uintptr_t)&value));
+    return value ? 1 : 0;
+}
+
+/*
+ * 取"上次状态"的初值。
+ *
+ * 不能直接假定为 1（松开）：这几个脚配的是下拉，K2/K3 悬空或未接时
+ * 读到的是低电平，初值取 1 就会在开机第一次扫描时误判成一次"按下"。
+ * 实测开机时 K2、K3 各误触发一次 —— K2 那次会把 g_abort 置 1；更要命的是
+ * 万一它抢在 K1 前面，状态机会从 IDLE 直接进 RECORDING，而工作线程压根
+ * 没收到 CMD_START，整机就卡在"录音中"了。
+ *
+ * fd 打不开时返回 1（维持原行为）：这种情形按键本来就用不了，
+ * 循环里的 read_button() 会一直返回 -1，产生不了边沿。
+ */
+static int read_button_initial(int fd)
+{
+    int s = read_button(fd);
+
+    return (s < 0) ? 1 : s;
+}
+
 static void init_buttons(void)
 {
     g_key1_fd = open("/dev/gpio1", O_RDWR);
@@ -276,17 +320,11 @@ static void init_buttons(void)
         ioctl(g_key3_fd, GPIOC_SETPINTYPE, GPIO_INPUT_PIN_PULLDOWN);
         printf("[Main] K3 GPIO (GPIO4) 初始化成功\n");
     }
-}
 
-static int read_button(int fd)
-{
-    bool value = false;
-
-    if (fd < 0) {
-        return -1;
-    }
-    ioctl(fd, GPIOC_READ, (unsigned long)((uintptr_t)&value));
-    return value ? 1 : 0;
+    /* 初值取自实际电平，避免开机瞬间的假边沿 */
+    g_key1_last = read_button_initial(g_key1_fd);
+    g_key2_last = read_button_initial(g_key2_fd);
+    g_key3_last = read_button_initial(g_key3_fd);
 }
 
 static void check_buttons(void)
