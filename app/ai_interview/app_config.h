@@ -32,6 +32,26 @@
 #  define CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD 500
 #endif
 
+/* ---- 采集 PCM 设备名 ----
+ * "default" 经 aw-alsa-lib 解析到卡 audiocodec（模拟 codec）。
+ * 若板子用的是数字麦，可运行期切换，不必重编重烧：
+ *   nsh> set PCM_DEV hw:snddmic
+ */
+#ifndef CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV
+#  define CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV "default"
+#endif
+
+static inline const char *app_capture_device(void)
+{
+    const char *env = getenv("PCM_DEV");
+
+    if (env != NULL && env[0] != '\0') {
+        return env;
+    }
+
+    return CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV;
+}
+
 /* ---- 流水线工作线程栈大小 ----
  * 必须够大：libcurl 在这个 port 上要 200KB 量级
  * （参考 CONFIG_EXAMPLES_HTTP_STACKSIZE 默认 204800），而
