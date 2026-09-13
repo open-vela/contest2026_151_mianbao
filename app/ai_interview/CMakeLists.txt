@@ -10,6 +10,7 @@ if(CONFIG_APP_AI_INTERVIEW)
     main.c
     state_machine.c
     network_client.c
+    audio_io.c
     STACKSIZE
     ${CONFIG_APP_AI_INTERVIEW_STACKSIZE}
     PRIORITY

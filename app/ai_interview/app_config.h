@@ -32,6 +32,15 @@
 #  define CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD 500
 #endif
 
+/* ---- 流水线工作线程栈大小 ----
+ * 必须够大：libcurl 在这个 port 上要 200KB 量级
+ * （参考 CONFIG_EXAMPLES_HTTP_STACKSIZE 默认 204800），而
+ * CONFIG_PTHREAD_STACK_DEFAULT 只有 4096。
+ */
+#ifndef CONFIG_APP_AI_INTERVIEW_WORKER_STACKSIZE
+#  define CONFIG_APP_AI_INTERVIEW_WORKER_STACKSIZE 262144
+#endif
+
 /*
  * 取云端 base 地址。
  * 环境变量 CLOUD_URL 优先于 Kconfig：演示当天换服务器只需
