@@ -382,6 +382,26 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
+    /*
+     * TLS 证书校验默认是打开的（libcurl 默认行为）。
+     *
+     * 注意：板级 rootfs 里没有任何 CA 根证书
+     * （CONFIG_LIB_CURL_CA_PATH 默认 /etc/ssl/curl，该路径不存在），
+     * 因此走 https:// 时校验必然失败。
+     *
+     * 两条出路 —— 优先前者：
+     *   1. 在设备上放一份 CA bundle，并把 CURLOPT_CAINFO 指过去
+     *   2. 显式打开 APP_AI_INTERVIEW_TLS_INSECURE 跳过校验
+     *      （仅适用于连自己的服务，演示用；不要长期开着）
+     *
+     * 用 http:// 时这里完全没有影响。
+     */
+#if defined(CONFIG_APP_AI_INTERVIEW_TLS_INSECURE)
+    printf("[Cloud] 警告: 已跳过 TLS 证书校验\n");
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+#endif
+
     res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
         printf("[Cloud] 上传失败: %s\n", curl_easy_strerror(res));
