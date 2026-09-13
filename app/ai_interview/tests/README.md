@@ -40,14 +40,16 @@
 | 非 JSON（网关 HTML 错误页） | `fixtures/sample_html.json` | `CLOUD_ERR_JSON` |
 | 边界入参 | — | 空 body / NULL / 重复 free 均不崩 |
 
-其中 `sample_empty_tts.json` 是**从本地 Flask 服务实测抓取的真实响应**
-（不设 `MIMO_API_KEY`），不是手工构造的。
+`sample_ok.json` 与 `sample_empty_tts.json` **都是从本地 Flask 服务实测抓取
+的真实响应**，不是手工构造的：
 
-## 素材说明
+- `sample_empty_tts.json` —— 不设 `MIMO_API_KEY` 时的响应（HTTP 200 + 空 `tts_audio`）
+- `sample_ok.json` —— 设好 key 后的真实成功响应。为避免入库 400KB 音频，
+  其 WAV 已截为 1 秒，但**响应结构、字段、音频格式全部保持原样**
 
-`fixtures/sample_ok.json` 里的 WAV 是从 `cloud/test_tts_output.wav` 截取的
-1 秒片段（24kHz / 单声道 / 16bit），结构与云端 TTS 实际返回的一致。
-测试只校验容器格式与解码结果，不校验音频内容。
+实测确认云端 TTS 返回格式为 **PCM / 单声道 / 24000Hz / 16bit**，端侧播放
+按此配置。（注意 `documents/api_protocol.md` 写的是"PCM"，实际是带 44 字节
+头的完整 WAV —— 按裸 PCM 播会把头当噪声放出来。）
 
 ## 编译方式
 
