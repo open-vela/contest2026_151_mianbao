@@ -75,7 +75,11 @@
 
 1. **补 manifest linkfile（R1）** —— 改动小、风险低、回报最高，是评委复现作品的第一道门。约半天。
 2. **打通 `network_client.c`（R2）** —— HTTP POST 音频 / 解析 base64 音频，同时补完 `main.c` 剩余 4 个 TODO。
-3. **把 `audio/` 写进 `CSRCS`** —— 让录音 / 播放真正跑起来。
+3. ~~**把 `audio/` 写进 `CSRCS`** —— 让录音 / 播放真正跑起来。~~
+   > ⚠️ **此条已于 2026-09-13 证实为错误，切勿执行**：`audio/` 那 6 个文件与 vendor 树
+   > `hal/test/sound/` 逐字节相同，而该目录已由 `CONFIG_COMPONENTS_AW_ALSA_UTILS`
+   > 编进 `libapps.a`（`nm` 可见 `aplay` / `capture_fs_wav` / `set_param` / `create_wav`
+   > 等符号）。再编一份会造成**重复定义**。详见第九节。
 4. **端云联调** —— `documents/project_status.md` 原计划的 7/21-7/25 首次联调从未执行，需补齐。
 5. **收尾（R3-R7）** —— 修正文档与实现不符之处、重写 README、清理杂项。
 
@@ -92,7 +96,7 @@
 | C 同学成果提交 | ⏳ 等待中 | C | | |
 | D 同学成果提交 | ⏳ 等待中 | D | | |
 | R1 manifest 映射 | ✅ 已完成（未提交） | AI | 2026-09-13 | 4 条 linkfile + 4 个 Make.defs；机制已验证，真实编译待全量 sync |
-| R2 网络通信实现 | ☐ 未开始 | | | |
+| R2 网络通信实现 | 🟡 网络层完成（待硬件验证） | AI | 2026-09-13 | 音频链路与主循环串联待做，见第九节 |
 | R3 修正文档 | ☐ 未开始 | | | |
 | R4 重写 README | ☐ 未开始 | | | |
 | R5-R7 清理 | ☐ 未开始 | | | |
@@ -146,3 +150,79 @@
 3. **评委该照哪条命令编译，尚无定论**：README（仍是模板）给的 `./build.sh <board-config-path>` 在 vendor 板子上会失败（`configure.sh` 是相对 `nuttx/` 解析路径的）；而 `documents/project_status.md` 记录的实际流程在**另一棵树** `~/vela-opensource` 里（lichee 环境：`vela_env.sh` + `lunch_nuttx` + `m` + `pack`）。R4 重写 README 时必须给出定论。
 
 **遗留**：真实编译验证需要一次全量 `repo sync`（264 个工程，GB 级、需联网）。
+
+---
+
+## 九、2026-09-13 更新：R2 第一阶段（网络层）完成
+
+按"先网络层、再音频"的节奏推进。本轮把端侧"发不出去"这一环补上了。
+
+### 9.1 改动
+
+| 文件 | 改动 |
+|------|------|
+| `app/ai_interview/network_client.h` | **新增**：错误码、`cloud_request_t` / `cloud_response_t`、五个函数原型 |
+| `app/ai_interview/network_client.c` | **重写**：libcurl POST/GET + cJSON 解析 + mbedtls base64 解码 |
+| `app/ai_interview/app_config.h` | **新增**：Kconfig 宏的 `#ifndef` 兜底 + `getenv("CLOUD_URL")` 运行时覆盖 |
+| `app/ai_interview/Kconfig` | `STACKSIZE` 8192→32768；新增 worker 栈、云地址、角色、录音上限、静音阈值 |
+| `app/ai_interview/Makefile` | 补 curl / mbedtls 头文件路径 |
+
+`CMakeLists.txt` 无需改动 —— CMake 路径已由 `NUTTX_INCLUDE_DIRECTORIES` 全局注入这两条路径（`external/curl/CMakeLists.txt:39`、`apps/crypto/mbedtls/CMakeLists.txt:131`）。
+
+### 9.2 关键发现：云端失败时**没有任何字段**能表示失败（已实测）
+
+用真实 WAV 向本地 Flask 发一次请求（**不带** `MIMO_API_KEY`），实测响应：
+
+```
+HTTP 200
+type: "question"          ← 不是 "error"
+next_action: "continue"   ← 正常值
+text: "抱歉，生成问题失败，请重试。"   ← 兜底文案
+tts_audio: (空字符串)      ← 唯一能识别失败的字段
+```
+
+**结论**：端侧若只看 HTTP 状态码或 `type`/`next_action`，会把失败当成功 —— 演示时表现为"灯正常、没有声音"，极难排查。因此"空的 `tts_audio` 判为失败"不是防御性编程，而是**唯一可靠的检测手段**。判定逻辑单点收敛在 `cloud_parse_response()` 内，三重防线：
+
+1. HTTP 非 2xx → `CLOUD_ERR_HTTP`
+2. `tts_audio` 缺失/空串 → `CLOUD_ERR_EMPTY_TTS`
+3. 解码后非 WAV（校验 RIFF/WAVE 魔数）→ `CLOUD_ERR_BAD_AUDIO`
+
+### 9.3 验证结果（PC 端单测，不依赖硬件）
+
+把**真实的 `network_client.c`** 与树里的 cJSON、mbedtls base64 一起编译，不打桩：
+
+| 用例 | 期望 | 结果 |
+|------|------|------|
+| 正常响应 | `CLOUD_OK`，解出完整 WAV | ✅ 48044 字节，RIFF/WAVE 魔数正确 |
+| **空 `tts_audio`（实测抓取的真实响应）** | `CLOUD_ERR_EMPTY_TTS` | ✅ |
+| 服务端 `error` 结构 | `CLOUD_ERR_EMPTY_TTS` | ✅ |
+| 非 JSON（HTML 错误页） | `CLOUD_ERR_JSON` | ✅ |
+| 空 body / NULL 入参 / 重复 free | 不崩、返回错误码 | ✅ |
+
+AddressSanitizer + LeakSanitizer 全程无泄漏、无越界。
+
+### 9.4 踩到的坑（已修）
+
+**失败路径的内存归属**：初版在返回错误码前已经分配了 `text`/`user_text`，调用者忘记 free 就会逐轮累积泄漏。已改为失败时模块内部统一释放并归零 `resp`，使**调用者无论成败都可安全调用 `cloud_response_free()`**。
+
+### 9.5 仍缺什么才能演示
+
+| 缺什么 | 说明 |
+|--------|------|
+| **`MIMO_API_KEY`** | 环境变量未设置；git 历史里那个 key（commit `812a1b5`）**已泄露到远端仓库，演示前应轮换** |
+| **云端部署地址** | 尚未确定。端侧已做成 Kconfig + `nsh> set CLOUD_URL ...` 运行时覆盖，换地址不必重编重烧 |
+| **音频链路** | 第二阶段：录音到内存 + 静音检测 + 播放 |
+| **`main.c` 主循环串联** | 第二阶段：4 个 TODO + 工作线程（网络/音频都是秒级阻塞，不能放主循环） |
+| **真实编译验证** | 依赖全量 `repo sync`（进行中） |
+
+### 9.6 依赖现状（本阶段零 defconfig 改动）
+
+选型时刻意避开了需要改板级 defconfig 的方案，因为 **defconfig 在 `vendor/allwinnertech/` 里，不在本仓库，评委 sync 不到**：
+
+| 能力 | 来源 | 是否需改 defconfig |
+|------|------|-------------------|
+| HTTP | `CONFIG_LIB_CURL`（R528 defconfig 已开） | 否 |
+| base64 | `mbedtls_base64_*`（由 LIB_CURL 间接引入，已链接） | 否 |
+| JSON | `CONFIG_NETUTILS_CJSON`（已开） | 否 |
+
+> 注：`apps/netutils/codecs` 的 `base64_encode` 需要 `CONFIG_CODECS_BASE64`，该配置**未开且不在本仓库内**，故弃用。
