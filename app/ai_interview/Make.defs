@@ -3,5 +3,5 @@
 ############################################################################
 
 ifneq ($(CONFIG_APP_AI_INTERVIEW),)
-CONFIGURED_APPS += $(APPDIR)/examples/ai_interview
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_151_ai_interview
 endif
