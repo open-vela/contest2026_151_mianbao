@@ -31,37 +31,59 @@
 #define AI_CODEC_CARD   "audiocodec"
 
 /*
- * 打开麦克风输入通路。
+ * 配置 codec。
  *
- * codec 默认不启用任何 ADC 模拟输入路由，而 sunxi_codec_hw_params() 会在
- * sunxi_get_adc_ch() 返回负值时直接失败，并打出一条误导性的
- * "capture only support 1~3 channel" —— 它检查的其实不是请求的通道数，
- * 而是"模拟输入通路有没有被打开"。
+ * 两件事都必须做，缺一不可：
+ *
+ * 1) 打开模拟输入通路。codec 默认不启用任何 ADC 输入路由，而
+ *    sunxi_codec_hw_params() 会在 sunxi_get_adc_ch() 返回负值时直接失败，
+ *    并打出一条误导性的 "capture only support 1~3 channel" —— 它检查的
+ *    其实不是请求的通道数，而是"模拟输入通路有没有被打开"。
+ *
+ * 2) 设置 ADC/DAC 音量。ADC 数字音量若为默认低值，采到的 PCM 会被压成
+ *    接近全零（实测表现为持续 RMS≈1，说话也毫无反应）。这一点最初漏掉了，
+ *    上板后才发现。
  *
  * 录制通道数跟着打开的输入通路走：只开 MIC1 就得到单声道，与本模块请求的
  * 1 声道一致（codec 按 adc1/adc2/adc3_flag 逐个使能 ADC 数字通道）。
  *
- * 取值参考 vendor 自己的 hal/test/sound/aloop.c（那段在那边是注释掉的，
- * 因为他们的板子上电时通路已被配好；我们必须在应用内显式开）。
+ * 取值来自队伍此前在这块板子上验证过的 amixer 配方
+ * （amixer set 19/20/21 255、6/7 150、15 7），此处改用控件名以免索引漂移。
  */
-static int codec_open_mic_route(void)
+static int codec_configure(void)
 {
-    int ret;
+    static const struct {
+        const char  *name;
+        unsigned int value;
+    } settings[] = {
+        /* 采集：输入通路 + 数字音量 */
+        { "MIC1 input switch",   1   },
+        { "MIC1 gain volume",    19  },
+        { "ADC1 digital volume", 255 },
+        { "ADC2 digital volume", 255 },
+        { "ADC3 digital volume", 255 },
+        /* 播放：数字音量 + 耳机增益 */
+        { "DACL digital volume", 150 },
+        { "DACR digital volume", 150 },
+        { "HPOUT gain volume",   7   },
+    };
+    size_t i;
+    int failed = 0;
 
-    ret = snd_ctl_set(AI_CODEC_CARD, "MIC1 input switch", 1);
-    if (ret < 0) {
-        printf("[Audio] 打开 MIC1 输入开关失败: %d\n", ret);
-        return ret;
+    for (i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
+        if (snd_ctl_set(AI_CODEC_CARD, settings[i].name,
+                        settings[i].value) < 0) {
+            printf("[Audio] 设置 %s 失败\n", settings[i].name);
+            failed++;
+        }
     }
 
-    /* PGA 增益，取值同 vendor 模板 */
-    ret = snd_ctl_set(AI_CODEC_CARD, "MIC1 gain volume", 19);
-    if (ret < 0) {
-        printf("[Audio] 设置 MIC1 增益失败: %d\n", ret);
-        return ret;
+    if (failed != 0) {
+        printf("[Audio] codec 配置有 %d 项失败，录音可能无声\n", failed);
+        return -1;
     }
 
-    printf("[Audio] 麦克风输入通路已打开\n");
+    printf("[Audio] codec 已配置（输入通路 + ADC/DAC 音量）\n");
     return 0;
 }
 
@@ -210,13 +232,16 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         return AI_REC_ERROR;
     }
 
-    /* 必须先打开模拟输入通路，否则 hw_params 一定失败 */
-    if (codec_open_mic_route() < 0) {
+    /* 必须先配好 codec（输入通路 + ADC 音量），否则要么 hw_params 失败，
+     * 要么采回一堆全零 */
+    if (codec_configure() < 0) {
         free(buf);
         return AI_REC_ERROR;
     }
 
-    rc = snd_vela_pcm_open(&handle, AI_PCM_DEVICE,
+    printf("[Audio] 采集设备: %s\n", app_capture_device());
+
+    rc = snd_vela_pcm_open(&handle, app_capture_device(),
                            SND_VELA_PCM_STREAM_CAPTURE, 0);
     if (rc < 0) {
         printf("[Audio] 打开录音设备失败: %d\n", rc);
