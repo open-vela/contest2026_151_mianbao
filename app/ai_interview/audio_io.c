@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include <aw-alsa-lib/pcm.h>   /* 必须先于 common.h：后者用到 snd_pcm_* 类型 */
+#include <aw-alsa-lib/control.h>
 #include "audio/common.h"
 
 #include "audio_io.h"
@@ -27,6 +28,42 @@
 
 /* 设备名 "default" 由 aw-alsa-lib 解析到卡 audiocodec（见 alsa_config.c）*/
 #define AI_PCM_DEVICE   "default"
+#define AI_CODEC_CARD   "audiocodec"
+
+/*
+ * 打开麦克风输入通路。
+ *
+ * codec 默认不启用任何 ADC 模拟输入路由，而 sunxi_codec_hw_params() 会在
+ * sunxi_get_adc_ch() 返回负值时直接失败，并打出一条误导性的
+ * "capture only support 1~3 channel" —— 它检查的其实不是请求的通道数，
+ * 而是"模拟输入通路有没有被打开"。
+ *
+ * 录制通道数跟着打开的输入通路走：只开 MIC1 就得到单声道，与本模块请求的
+ * 1 声道一致（codec 按 adc1/adc2/adc3_flag 逐个使能 ADC 数字通道）。
+ *
+ * 取值参考 vendor 自己的 hal/test/sound/aloop.c（那段在那边是注释掉的，
+ * 因为他们的板子上电时通路已被配好；我们必须在应用内显式开）。
+ */
+static int codec_open_mic_route(void)
+{
+    int ret;
+
+    ret = snd_ctl_set(AI_CODEC_CARD, "MIC1 input switch", 1);
+    if (ret < 0) {
+        printf("[Audio] 打开 MIC1 输入开关失败: %d\n", ret);
+        return ret;
+    }
+
+    /* PGA 增益，取值同 vendor 模板 */
+    ret = snd_ctl_set(AI_CODEC_CARD, "MIC1 gain volume", 19);
+    if (ret < 0) {
+        printf("[Audio] 设置 MIC1 增益失败: %d\n", ret);
+        return ret;
+    }
+
+    printf("[Audio] 麦克风输入通路已打开\n");
+    return 0;
+}
 
 /* 录音参数：16kHz 单声道 16bit —— ASR 的通用首选，也是云端 demo 用的配置 */
 #define AI_REC_RATE     16000u
@@ -170,6 +207,12 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
     buf = malloc(44 + cap);
     if (buf == NULL) {
         printf("[Audio] 录音缓冲分配失败 (%u 字节)\n", (unsigned)(44 + cap));
+        return AI_REC_ERROR;
+    }
+
+    /* 必须先打开模拟输入通路，否则 hw_params 一定失败 */
+    if (codec_open_mic_route() < 0) {
+        free(buf);
         return AI_REC_ERROR;
     }
 
