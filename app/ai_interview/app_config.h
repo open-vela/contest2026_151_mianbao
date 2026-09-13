@@ -33,12 +33,31 @@
 #endif
 
 /* ---- 采集 PCM 设备名 ----
- * "default" 经 aw-alsa-lib 解析到卡 audiocodec（模拟 codec）。
- * 若板子用的是数字麦，可运行期切换，不必重编重烧：
+ * 实测确认：这块板子的麦克风接在**数字麦（DMIC）**上，走 hw:snddmic。
+ * "default" 解析到模拟 codec（audiocodec），那条通路上没有麦克风，
+ * 采回来的是恒定的全零。
+ *
+ * 仍支持运行期覆盖，便于换板子时验证：
  *   nsh> set PCM_DEV hw:snddmic
  */
 #ifndef CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV
-#  define CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV "default"
+#  define CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV "hw:snddmic"
+#endif
+
+/* ---- 采集声道数 ----
+ * DMIC 以 2 声道采集（实测可用）。录音时会下混成单声道再送 ASR。
+ */
+#ifndef CONFIG_APP_AI_INTERVIEW_CAPTURE_CHANNELS
+#  define CONFIG_APP_AI_INTERVIEW_CAPTURE_CHANNELS 2
+#endif
+
+/* ---- 麦克风数字增益（软件）----
+ * DMIC 驱动没有暴露增益控件，实测录音偏小，所以在下混时做数字放大。
+ * 运行期可调，省得为试一个数值重烧：
+ *   nsh> set MIC_GAIN 8
+ */
+#ifndef CONFIG_APP_AI_INTERVIEW_MIC_GAIN
+#  define CONFIG_APP_AI_INTERVIEW_MIC_GAIN 4
 #endif
 
 static inline const char *app_capture_device(void)
@@ -50,6 +69,36 @@ static inline const char *app_capture_device(void)
     }
 
     return CONFIG_APP_AI_INTERVIEW_CAPTURE_DEV;
+}
+
+static inline unsigned int app_capture_channels(void)
+{
+    const char *env = getenv("PCM_CH");
+    int v;
+
+    if (env != NULL && env[0] != '\0') {
+        v = atoi(env);
+        if (v >= 1 && v <= 8) {
+            return (unsigned int)v;
+        }
+    }
+
+    return CONFIG_APP_AI_INTERVIEW_CAPTURE_CHANNELS;
+}
+
+static inline unsigned int app_mic_gain(void)
+{
+    const char *env = getenv("MIC_GAIN");
+    int v;
+
+    if (env != NULL && env[0] != '\0') {
+        v = atoi(env);
+        if (v >= 1 && v <= 64) {
+            return (unsigned int)v;
+        }
+    }
+
+    return CONFIG_APP_AI_INTERVIEW_MIC_GAIN;
 }
 
 /* ---- 流水线工作线程栈大小 ----

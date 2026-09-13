@@ -210,9 +210,13 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
 {
     snd_pcm_t *handle = NULL;
     uint8_t *buf;
+    int16_t *scratch = NULL;
     size_t cap;
     size_t pcm_len = 0;
-    const unsigned frame_bytes = AI_REC_CHANNELS * (AI_REC_BITS / 8);
+    const unsigned int in_ch = app_capture_channels();
+    const unsigned int in_frame_bytes = in_ch * (AI_REC_BITS / 8);
+    const unsigned int out_frame_bytes = AI_REC_CHANNELS * (AI_REC_BITS / 8);
+    const unsigned int gain = app_mic_gain();
     const unsigned chunk_frames = AI_REC_RATE / (1000 / AI_CHUNK_MS);
     int silence_run = 0;
     int speech_chunks = 0;
@@ -224,11 +228,19 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         return AI_REC_ERROR;
     }
 
+    /* 录音缓冲按**单声道**尺寸分配：采集到的多声道会下混后再写入 */
     cap = (size_t)CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS *
-          AI_REC_RATE * frame_bytes;
+          AI_REC_RATE * out_frame_bytes;
     buf = malloc(44 + cap);
     if (buf == NULL) {
         printf("[Audio] 录音缓冲分配失败 (%u 字节)\n", (unsigned)(44 + cap));
+        return AI_REC_ERROR;
+    }
+
+    scratch = malloc((size_t)chunk_frames * in_frame_bytes);
+    if (scratch == NULL) {
+        printf("[Audio] 暂存缓冲分配失败\n");
+        free(buf);
         return AI_REC_ERROR;
     }
 
@@ -239,21 +251,24 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         return AI_REC_ERROR;
     }
 
-    printf("[Audio] 采集设备: %s\n", app_capture_device());
+    printf("[Audio] 采集设备: %s, %u 声道, 数字增益 x%u\n",
+           app_capture_device(), in_ch, gain);
 
     rc = snd_vela_pcm_open(&handle, app_capture_device(),
                            SND_VELA_PCM_STREAM_CAPTURE, 0);
     if (rc < 0) {
         printf("[Audio] 打开录音设备失败: %d\n", rc);
+        free(scratch);
         free(buf);
         return AI_REC_ERROR;
     }
 
     rc = set_param(handle, SND_PCM_FORMAT_S16_LE, AI_REC_RATE,
-                   AI_REC_CHANNELS, 1024, 4096);
+                   in_ch, 1024, 4096);
     if (rc < 0) {
         printf("[Audio] 录音参数配置失败: %d\n", rc);
         snd_vela_pcm_close(handle);
+        free(scratch);
         free(buf);
         return AI_REC_ERROR;
     }
@@ -263,36 +278,57 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
            CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS);
 
     for (;;) {
-        const int16_t *s;
+        const int16_t *src;
+        int16_t *dst;
         long long sum2 = 0;
         int i;
+        int c;
 
         if (abort != NULL && *abort) {
             result = AI_REC_ABORTED;
             break;
         }
-        if (pcm_len + (size_t)chunk_frames * frame_bytes > cap) {
+        if (pcm_len + (size_t)chunk_frames * out_frame_bytes > cap) {
             result = AI_REC_OK;     /* 到达时长上限，按正常结束处理 */
             break;
         }
 
-        rc = pcm_read(handle, (const char *)(buf + 44 + pcm_len),
-                      chunk_frames, frame_bytes);
+        /* 读一块多声道数据到暂存区 */
+        rc = pcm_read(handle, (const char *)scratch, chunk_frames,
+                      in_frame_bytes);
         if (rc <= 0) {
             printf("[Audio] 读取失败: %d\n", rc);
             result = AI_REC_ERROR;
             break;
         }
-        pcm_len += (size_t)rc * frame_bytes;
 
-        /* 静音判定：算整块 RMS，与门限比较。
-         * 用平方和与 thr²·n 比较，避免开方与浮点。 */
-        s = (const int16_t *)(buf + 44 + pcm_len - (size_t)rc * frame_bytes);
+        /* 下混成单声道并施加数字增益。
+         * DMIC 驱动没有暴露增益控件，实测录音偏小，只能在这里补。
+         * 取平均而非取单路：不确定麦克风落在那一路，取平均对两种情况都成立。 */
+        src = scratch;
+        dst = (int16_t *)(buf + 44 + pcm_len);
         for (i = 0; i < rc; i++) {
-            long long v = s[i];
-            sum2 += v * v;
-        }
+            int32_t acc = 0;
+            int32_t v;
 
+            for (c = 0; c < (int)in_ch; c++) {
+                acc += src[i * (int)in_ch + c];
+            }
+            acc /= (int32_t)in_ch;
+
+            v = acc * (int32_t)gain;
+            if (v > 32767) {
+                v = 32767;
+            } else if (v < -32768) {
+                v = -32768;
+            }
+
+            dst[i] = (int16_t)v;
+            sum2 += (long long)v * v;
+        }
+        pcm_len += (size_t)rc * out_frame_bytes;
+
+        /* 静音判定：整块均方与门限平方比较，避免开方与浮点 */
         if (sum2 > (long long)CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD *
                    CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD * rc) {
             silence_run = 0;
@@ -302,11 +338,11 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         }
         chunks++;
 
-        /* 每 10 块（1 秒）打一次实测 RMS，方便现场调阈值 */
+        /* 每 10 块（1 秒）打一次实测均方，方便现场调阈值 */
         if (chunks % 10 == 0) {
-            printf("[Audio] %d 秒, 本块 RMS≈%d, 人声占比 %d%%\n",
+            printf("[Audio] %d 秒, 本块均方≈%d, 人声占比 %d%%\n",
                    chunks / 10,
-                   (int)((sum2 > 0) ? (long long)(sum2 / (rc > 0 ? rc : 1)) : 0),
+                   (int)(rc > 0 ? (long long)(sum2 / rc) : 0),
                    chunks ? speech_chunks * 100 / chunks : 0);
         }
 
@@ -323,6 +359,7 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
 
     snd_vela_pcm_drain(handle);
     snd_vela_pcm_close(handle);
+    free(scratch);
 
     if (result != AI_REC_OK) {
         printf("[Audio] 录音结束: %s\n", audio_rec_strerror(result));
@@ -336,7 +373,7 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
     *out_len = 44 + pcm_len;
 
     printf("[Audio] 录音完成: %.1f 秒, %u 字节\n",
-           (double)pcm_len / (AI_REC_RATE * frame_bytes),
+           (double)pcm_len / (AI_REC_RATE * out_frame_bytes),
            (unsigned)(44 + pcm_len));
     return AI_REC_OK;
 }
