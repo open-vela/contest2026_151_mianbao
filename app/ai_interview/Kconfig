@@ -24,6 +24,38 @@ config APP_AI_INTERVIEW_PRIORITY
 
 config APP_AI_INTERVIEW_STACKSIZE
 	int "Stack size"
-	default 8192
+	default 32768
+	---help---
+		Main task stack. libcurl needs a large stack (see
+		CONFIG_EXAMPLES_HTTP_STACKSIZE, default 204800); the network
+		work itself runs on a worker thread, this only needs to cover
+		the state machine, button scanning and log output.
+
+config APP_AI_INTERVIEW_WORKER_STACKSIZE
+	int "Network/audio worker stack size"
+	default 262144
+	---help---
+		Stack for the worker thread that runs capture / upload /
+		playback. Must be large: libcurl plus mbedTLS.
+
+config APP_AI_INTERVIEW_CLOUD_URL
+	string "Cloud server base URL (without path)"
+	default "http://192.168.1.100:5000"
+	---help---
+		Base URL of the Flask service in cloud/. The paths
+		/api/interview and /api/health are appended by the code.
+		Can be overridden at runtime:  nsh> set CLOUD_URL http://...
+
+config APP_AI_INTERVIEW_ROLE
+	string "Interview role"
+	default "产品经理"
+
+config APP_AI_INTERVIEW_MAX_RECORD_SECONDS
+	int "Max recording seconds per round"
+	default 30
+
+config APP_AI_INTERVIEW_SILENCE_THRESHOLD
+	int "Silence detection RMS threshold (16-bit full scale)"
+	default 500
 
 endif
