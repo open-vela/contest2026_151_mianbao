@@ -40,7 +40,7 @@ config APP_AI_INTERVIEW_WORKER_STACKSIZE
 
 config APP_AI_INTERVIEW_CLOUD_URL
 	string "Cloud server base URL (without path)"
-	default "http://192.168.1.100:5000"
+	default "http://172.20.10.2:5000"
 	---help---
 		Base URL of the Flask service in cloud/. The paths
 		/api/interview and /api/health are appended by the code.
