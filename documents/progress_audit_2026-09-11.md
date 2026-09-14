@@ -405,7 +405,8 @@ codec 上电默认不开任何输入路由，启动脚本里也没有 amixer，�
 |---|------|------|
 | 1 | 烧录 DMIC 修复并验证录音 | ✅ 已完成（9/13，端到端跑通） |
 | 2 | 定静音阈值与麦克风增益 | ✅ 已完成：门限 **500**、增益 **×4**，实测依据见 11.8 |
-| 3 | 推送未推送的 commit | ✅ 已完成（9/14）：10 个提交已推送至 `openvela/dev-ai-contest-2026`，远端与本机一致 |
+| 3 | 推送未推送的 commit | ✅ 已完成（9/14）：34 个提交已推送至 `openvela/dev-ai-contest-2026`（fork），远端与本机一致（`396c0e8`） |
+| 11 | **同步进官方仓**（组员/评委只从官方仓拉，不合并等于拉不到） | ✅ 已发起（9/14）：**PR #12**，`MERGEABLE/CLEAN` 可快进、CLA 已通过；**合并权在组织者手里** —— 若临近 9/20 未合并需主动催，见 **§11.15** |
 | 4 | 复核云端响应 8MB 上限 —— 纯静音那轮触发了 `响应超过上限 8388608 字节` | ✅ 已完成（9/14）：**已正面确认**，共两处越界源（静音轮、报告轮），均已修复并实测 —— 详见 **§11.12** |
 | 5 | R3 修正文档（`project_status.md` 描述了 4 个不存在的文件） | ✅ 已完成（9/14）：详见 **§11.10** |
 | 6 | R4 重写 README（评委据此复现，**含编译命令定论**） | ✅ 已完成（9/14）：README 已按组委会模板重写；编译命令定论见 **§11.9** |
@@ -805,3 +806,36 @@ completion = client.chat.completions.create(..., extra_body=THINKING_DISABLED)
 即：**推理模型吃 token 的 bug 已闭环** —— 从「报告轮必空」到真机 11 轮零失败。
 
 **剩余唯一未闭环的项**：`wapi power_save wlan0 off` 是否真能消除随机掉线（需连续多跑几轮观察），见 11.7。
+
+---
+
+### 11.15 同步官方仓：PR #12（2026-09-14）
+
+**背景**：组员与评委按 README §4.1 是从**官方仓** `open-vela/contest2026_151_mianbao` 拉的，而官方仓停在 7/27 的 `9dc2eb9`，中间积压 34 个提交 —— 不合并，谁都拉不到 R1–R7 的成果。
+
+**官方仓禁止直接推送**（分支保护：`Changes must be made through a pull request` + 要求 `cla/signature` 检查），所以走 PR：
+
+| 项 | 结果 |
+|----|------|
+| PR | **[open-vela/contest2026_151_mianbao#12](https://github.com/open-vela/contest2026_151_mianbao/pull/12)** |
+| 源 → 目标 | `xunzhekafei:dev-ai-contest-2026` → `open-vela:dev-ai-contest-2026` |
+| 合并性 | `MERGEABLE` / **`CLEAN`**（官方分支是本地分支的**祖先**，可快进，无冲突） |
+| CLA | ✅ `pass` —— `CLA signed for all 1 contributor(s)`（**早已签过**，此前 8 个 PR 已合并，最近 #11 在 7/27） |
+| 规模 | 34 commits · 54 files · **+6682 / −792** |
+
+**⚠️ 合并权在组织者手里**，本队只能发起。**若临近 9/20 仍未合并，需主动去 PR 下催。**
+
+**密钥复核（进官方仓前重做）**：对区间内**新增行**用当前生效 key 精确串匹配 → **0 命中**；`git grep` 全文件快照 → **0 命中**；`sk-` 长串扫描 → 无。另：历史泄露的旧 key 在 `812a1b5`（7/12），**官方仓早已包含**，本次 PR 不新增暴露 —— 这也是那个 key 必须保持停用的原因。
+
+**⛔ 一个判断失误的记录**：我最初提议「把 `openvela.xml` 的 `fetch="../open-vela/"` 改成绝对地址」以便从 fork 拉取。**核实后放弃了**：`openvela.xml` 是组委会给的共享文件，改动会随 PR 进官方仓，若组织者内部走私有镜像，相对路径才是对的 —— **风险不对等，不动**。改用下面零风险的过渡办法。
+
+**过渡期取码办法（组员用，官方仓合并后作废）**：`-u` 地址**必须保持官方**（相对 remote 是按 manifest 服务器地址解析的，换成 fork 会让整个 openvela 基座解析到不存在的 `xunzhekafei/open-vela`），本队仓另行切到 fork 最新：
+
+```bash
+cd contest2026_151_mianbao
+git remote add fork https://github.com/xunzhekafei/contest2026_151_mianbao.git   # 已存在则跳过
+git fetch fork dev-ai-contest-2026
+git merge --ff-only fork/dev-ai-contest-2026
+```
+
+`--ff-only` 是刻意的：**已用 `git merge-base --is-ancestor` 核实**官方分支确为其祖先，只会快进、不可能丢改动。之后 `repo sync` 对本项目是**空操作**（合并祖先 = Already up to date），不会退回旧代码；但 **`repo sync --force-sync` 会**。README §4.0 已加同样的折叠说明。
