@@ -17,6 +17,11 @@ LLM_MODEL = "mimo-v2.5"
 # 加载 Skills Prompt 模板
 SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
 
+# 面试结束判据：历史累计到 20 条（约 10 轮问答）即收尾。
+# ⚠️ 两个调用点的 history 长度差 1：next_question() 收到的**不含**本轮回答，
+# llm_interview() 收到的**含**本轮回答，所以后者要先减 1 再比。
+HISTORY_FINISH_THRESHOLD = 20
+
 
 def load_skill(skill_name: str) -> dict:
     """
@@ -147,7 +152,7 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     )
 
     # 判断是否结束面试（超过 10 轮）
-    next_action = "finish" if len(history) >= 20 else "continue"
+    next_action = "finish" if len(history) >= HISTORY_FINISH_THRESHOLD else "continue"
 
     if result:
         return {"text": result, "next_action": next_action}
@@ -281,6 +286,15 @@ def llm_interview(role: str, history: list, state: str, audio_base64: str = "") 
         return generate_feedback(role, history)
     else:
         if history:
+            # 最后一轮直接出评估报告，而不是再抛一个问题。
+            #
+            # 端侧只会发 state="recording_finished"（app/ai_interview/main.c:124），
+            # 从不发 "feedback" —— 所以上面那个分支在真实链路上不可达，报告一度是
+            # 死代码，结尾那段"最终评估"实际是 next_question 在长历史下即兴写的。
+            # 结束判据本来就是云端算出来的（见 next_question），这里提前判一次即可，
+            # 端侧协议（同回合、同 next_action=finish）完全不变。
+            if len(history) - 1 >= HISTORY_FINISH_THRESHOLD:
+                return generate_feedback(role, history)
             return next_question(role, history[:-1], history[-1]["content"])
 
     return start_interview(role)
