@@ -22,15 +22,15 @@ cloud/
 ├── session_manager.py      # 会话管理模块
 ├── requirements.txt        # Python 依赖列表
 │
-├── test_services.py        # ASR/TTS 服务测试脚本
+├── test_services.py        # ASR/TTS 服务测试脚本（运行后在 cloud/ 下生成下面两个 wav）
 ├── play_tts.py             # TTS 语音播放工具
 ├── demo_interview.py       # 面试流程演示脚本
 │
-├── test_tts_output.wav     # TTS 非流式测试音频（示例）
-├── test_tts_stream_output.wav  # TTS 流式测试音频（示例）
-│
 └── README.md               # 本文件
 ```
+
+> `test_services.py` 运行后会生成 `test_tts_output.wav`（非流式）与 `test_tts_stream_output.wav`（流式），
+> 各约 300KB。它们是**测试产物、不入仓库**（已在 `.gitignore` 中），复跑一次脚本即可重新生成。
 
 ---
 
