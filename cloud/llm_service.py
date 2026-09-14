@@ -22,6 +22,16 @@ SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 # llm_interview() 收到的**含**本轮回答，所以后者要先减 1 再比。
 HISTORY_FINISH_THRESHOLD = 20
 
+# ⚠️ mimo-v2.5 是**推理模型**：它先产出思考（reasoning_content），且 reasoning_tokens
+# 与正文**共用** max_tokens 预算。实测思考会吃掉 300~800 token，而各 skill 的
+# max_tokens 是按"输出额度"配的（600/800），于是历史越长思考越久、正文余量越小：
+#   - 第 10 轮（消息数 21）next_question：reasoning 峰值 801 撞满 800 → 正文 0 token
+#   - 上板排练实测：报告轮正文被挤空，用户听到兜底文案"生成报告失败"（6 字）
+# 关掉思考后 reasoning_tokens=0，全部预算给正文：实测输出质量无可见下降（追问依旧
+# 自然、报告结构完整），且报告轮从 16 秒降到几秒。这是端云链路上**每一轮**都会走的
+# 咽喉点，所以集中改在这里。若将来换模型，需重新验证该参数是否被支持。
+THINKING_DISABLED = {"thinking": {"type": "disabled"}}
+
 
 def load_skill(skill_name: str) -> dict:
     """
@@ -74,7 +84,8 @@ def call_llm(system_prompt: str, messages: list, temperature: float = 0.7,
             model=LLM_MODEL,
             messages=full_messages,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            extra_body=THINKING_DISABLED
         )
 
         result = completion.choices[0].message.content
