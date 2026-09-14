@@ -448,7 +448,7 @@ export MIMO_API_KEY="$(sed -n '42p' ~/test-project/README.md | tr -d '\r\n')"
 python3 app.py
 ```
 
-> ⚠️ **`~/.mimo_key` 已不存在**（2026-09-14 更正）—— 上面这条 `cat ~/.mimo_key` 是旧写法，**照着敲会失败**。现用 key 只存在于 **`~/test-project/README.md` 的第 42 行**（注意**不是最后一行**，最后一行是个 GitHub handle；也不在 `.bashrc`/`.profile`，无 `.env`）。
+> ⚠️ **`~/.mimo_key` 已不存在**（2026-09-14 更正）—— 手册早期版本写的是 `cat ~/.mimo_key`，**照着敲会失败**。现用 key 只存在于 **`~/test-project/README.md` 的第 42 行**（注意**不是最后一行**，最后一行是个 GitHub handle；也不在 `.bashrc`/`.profile`，无 `.env`）。
 >
 > 想恢复成"稳定路径"的话（**推荐**，因为 README 第 42 行会随那次项目的日常编辑而漂移）：
 > ```bash
