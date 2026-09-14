@@ -147,7 +147,7 @@
 
 1. **组委会模板自身有同类 bug**：`app/hello_app/Make.defs` 指向 `contest2026_000_hello_app`，而 manifest 映射到 `contest2026_151_hello_app`，两者对不上——模板自带样例应用的路径其实是断的。R1 的修法没有沿用它的写法，因此避开了这个问题。
 2. **本地工作区 sync 不完整**：`.repo/projects/` 只有 **13** 个项目（manifest 共 **264** 个），`vendor/allwinnertech` 从未下载 → **本机无法从 repo 工作区编译 R528 固件**。
-3. **评委该照哪条命令编译，尚无定论**：README（仍是模板）给的 `./build.sh <board-config-path>` 在 vendor 板子上会失败（`configure.sh` 是相对 `nuttx/` 解析路径的）；而 `documents/project_status.md` 记录的实际流程在**另一棵树** `~/vela-opensource` 里（lichee 环境：`vela_env.sh` + `lunch_nuttx` + `m` + `pack`）。R4 重写 README 时必须给出定论。
+3. ~~**评委该照哪条命令编译，尚无定论**：README（仍是模板）给的 `./build.sh <board-config-path>` 在 vendor 板子上会失败（`configure.sh` 是相对 `nuttx/` 解析路径的）~~ —— **此结论已于 2026-09-14 推翻，见 §11.9**。`./build.sh <board-config-path>` 在 vendor 板子上**可用**（这正是厂家 `m`/`mnsh` 内部调用的同一条命令），当时"会失败"的判断来自对 `configure.sh` 路径回退链的误读。
 
 **遗留**：真实编译验证需要一次全量 `repo sync`（264 个工程，GB 级、需联网）。
 
@@ -408,7 +408,7 @@ codec 上电默认不开任何输入路由，启动脚本里也没有 amixer，�
 | 3 | 推送未推送的 commit | ⏸ **用户决定暂不推送**（本地已累积 7 个待推提交） |
 | 4 | 复核云端响应 8MB 上限 —— 纯静音那轮触发了 `响应超过上限 8388608 字节` | ⏳ 待观察。近期各轮解码后 253KB~975KB，余量充足，但**仍未正面确认** |
 | 5 | R3 修正文档（`project_status.md` 描述了 4 个不存在的文件） | ☐ 未开始 |
-| 6 | R4 重写 README（评委据此复现，**含编译命令定论**） | ☐ 未开始 ⚠️ 最高优先级 |
+| 6 | R4 重写 README（评委据此复现，**含编译命令定论**） | ✅ 已完成（9/14）：README 已按组委会模板重写；编译命令定论见 **§11.9** |
 | 7 | R5-R7 清理（`logs/your-github-login/`、12 个被跟踪的构建产物） | ☐ 未开始 |
 | 8 | 演示排练（多轮对话 + Wi-Fi 稳定性） | ☐ 未开始 |
 | 9 | 演示前最后一次轮换 MIMO key（旧 key 已进过远端历史） | ☐ 未开始 |
@@ -553,3 +553,53 @@ nsh> wapi reconnect   wlan0     # ← 敲了会报错
 
 - 感知到的 `[Main] K2 按下` 等并发错行，根因是 **NuttX 的 stdio 非线程安全**（主线程与工作线程同时 `printf` 到串口）。日志阅读时按此预期。
 - 一次误判记录：曾据"抓包看不到任何包"推断 Windows 防火墙拦截 —— **错**，真因是 wlan0 掉线。教训：**先看板子 `ifconfig`，再看宿主机。**
+
+---
+
+### 11.9 R4 编译命令定论（2026-09-14 实测）
+
+> 这一节回答 §八遗留的"评委该照哪条命令编译"。**结论是：组委会模板给的 `./build.sh <board-config-path>` 本身就是对的**，此前"在 vendor 板子上会失败"的判断是**误读源码后的错误结论**（见下"为什么当初判断错了"）。
+
+#### 定论
+
+| 项 | 值 |
+|----|-----|
+| 工作目录 | openvela 工作区**根目录**（`build.sh` 所在处，即本仓的上一级） |
+| 命令 | `./build.sh vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/ -e -Wno-error -j32` |
+| 板级配置 | `vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/`（随 manifest 的 `vendor/allwinnertech` 工程一并 sync） |
+| 产出 | `nuttx/nuttx.bin`（可执行固件）；打包成可烧录 `.img` 还需 lichee 的 `pack` |
+
+`-e -Wno-error` 不是可选项：vendor 板级代码在 `-Werror` 下编不过。这条命令**就是厂家 SDK 自己的 `m`/`mnsh`/`mnuttx` 内部调用的形式**（`vendor/allwinnertech/lichee/tools/scripts/envsetup.sh:699,703,751,755`），README 给评委的就是它。
+
+完整可烧录流程（lichee 环境，`pack` 需要 `lunch_nuttx` 导出的环境变量）：
+
+```bash
+cd vendor/allwinnertech/lichee
+source vela_env.sh && source envsetup.sh
+lunch_nuttx r528s3-velaevb1      # 选板
+m                                # 内部即调用上面那条 build.sh，再 strip/objcopy 成 nuttx.bin → nsh.fex
+pack                             # 打包 → lichee/out/r528s3/velaevb1_nand/rtos_nuttx_..._256Mnand.img
+```
+
+#### 证据链（三条独立证据）
+
+| # | 证据 | 结果 |
+|---|------|------|
+| 1 | **本机实跑**（2026-09-14 02:2x）：`./build.sh vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/ -e -Wno-error -j32` | ✅ **EXIT=0**，`LD: nuttx`，产出 `nuttx.bin`；固件内可查到 `ai_interview` 符号与程序名 |
+| 2 | **configure.sh 路径解析实测**（非破坏性：不带 `-e` 时它只做解析与比对，不写树） | ✅ 相对路径与绝对路径均返回 `No configuration change.` / **退出码 0**；错误路径按预期退出 3 |
+| 3 | **厂家脚本自身**就是同一条命令 | ✅ `envsetup.sh` 的 `mnsh`/`mnuttx`/`m` 全部是 `cd $ROOT_PATH && ./build.sh vendor/allwinnertech/boards/$RTOS_TARGET_CHIPNAME/$RTOS_BOARD_DEVICE/configs/<config>/ ...` |
+
+`configure.sh` 的路径回退链（`nuttx/tools/configure.sh:156-168`）依次尝试：`${TOPDIR}/boards/*/*/<boarddir>/configs/<configdir>` → `${TOPDIR}/${boardconfig}` → **`${boardconfig}` 原样**。第三条即"按调用者给的路径解析"；而 `build.sh` 在 `${ROOTDIR}/${board_config}` 存在时会先把它**转成绝对路径**再传进去（`build.sh:395-401`），所以**只要在工作区根目录调用就一定命中**。
+
+#### 为什么当初判断错了
+
+上一轮只看到回退链的前两条（都相对 `nuttx/` 解析）就下了"会失败"的结论，**漏掉了第三条兜底**（`${boardconfig}` 原样使用），也没注意到 `build.sh` 会先转绝对路径。教训与 §11.8 那条同源：**对构建系统的结论必须实跑，读代码读不出的地方就设计一个非破坏性的实验**（本次用"不带 `-e` 的 configure.sh"做到了零写入验证）。
+
+#### 顺带查出的两个问题（都已处理）
+
+1. **⚠️ `apps/examples/Kconfig` 有 4 条陈旧项，会让 `m` 报假的 "build failed"** —— `ai_interview`/`ai_interview_test`/`button_test`/`led_test` 的 `source` 行仍指向 7 月那批 `apps/examples/` 旧软链（9/13 迁到 `packages/demos/` 后旧软链被删，但该文件是生成物、没再重新生成）。它不影响编译，但会让**最后一步 `make savedefconfig` 失败、`build.sh` 退出码 3**，于是 `mnuttx` 打印 `build nsh failed` —— **固件其实已经编好了**。已用生成器重建该文件（只删掉那 4 条，其余逐字节一致）：
+   ```bash
+   cd ~/vela-opensource/apps/examples && ../tools/mkkconfig.sh -m "Examples"
+   ```
+   > 再遇到 `m` 报 build failed 时，**先看 `nuttx/nuttx.bin` 的时间戳**再决定要不要慌。修好后完整跑一遍为 **EXIT=0**。
+2. **`build.sh` 每次成功构建都会把 `nuttx/defconfig` 回写进板级 `defconfig`**（`build.sh` 尾部 `make savedefconfig` + `cp`）。本次回写的**唯一差异**是补上了一行 `CONFIG_APP_AI_INTERVIEW_STACKSIZE=8192`（`.config` 里本来就是 8192，但板级 defconfig 此前缺这行；Kconfig 默认值是 32768）。**这行是把已实测通过的配置固化成"下次干净重建也一致"的记录**，故保留。回写后 `nuttx/defconfig` 与板级 defconfig 仍然一致，增量构建路径不受影响。

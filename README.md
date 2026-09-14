@@ -1,148 +1,253 @@
-# contest2026_151_mianbao
+# AI 模拟面试官
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
-
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `151`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
-
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+> 2026 首届 openvela AI 硬件开发者大赛 · **AI 硬件产品创新**赛道
+> 队伍：`mianbao`（编号 `151`）· 仓库：`contest2026_151_mianbao`
 
 ---
-
-## 一、先读这些官方文档
-
-**通用（所有赛道必读）：**
-
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
-
-**按你的赛道选读（三选一）：**
-
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
-
----
-
-## 二、第一步：拉取完整工程
-
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
-
-```bash
-repo init -u https://github.com/open-vela/contest2026_151_mianbao \
-  -b dev-ai-contest-2026 -m contest2026_151_mianbao.xml
-repo sync -c -j8
-```
-
-同步后，你的整个仓库位于工作区的 `contest2026_151_mianbao/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
-
----
-
-## 三、第二步：在哪里写代码
-
-**只在自己的仓目录 `contest2026_151_mianbao/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_151_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_151_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_151_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_151_mianbao.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
-```
-
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
-
----
-
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
-
-```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
-
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
-```
-
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
-
----
-
-## 五、第四步：提交作品
-
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
-
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
-
-### 关于 PR 与 CLA
-
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
-
----
-
-## 六、提交前：把本 README 改成你的作品说明
-
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
-
-```markdown
-# <你的作品名>
 
 ## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
 
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
+**一句话**：按下板子上的一个键，就能完成一轮完整的语音面试问答 —— 端侧录音、云端识别与大模型追问、再把"面试官"的话播回板子上，全程不用碰电脑。
 
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
+**它解决什么问题**：面试练习的瓶颈是"没人陪我练"。真人模拟面试成本高、时间难约；对着镜子练又没有反馈。这个作品把面试官放进一块巴掌大的开发板里：**按一下 K1，说话，松手就自动收尾**，几十秒后面试官会用语音回应你、追问你，并给出点评。
 
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
+**端云链路**：
 
-## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
+```
+        ┌─────────────────── 开发板（openvela / NuttX，全志 R528）───────────────────┐
+        │                                                                         │
+  K1 ──▶│ 录音(DMIC) ──▶ 静音检测自动收尾 ──▶ base64 WAV ──▶ libcurl ──┐           │
+        │      ▲ LED1 快闪              ▲                             │           │
+        │      │                        │                             ▼           │
+        │   LED 状态机              LED1 慢闪(上传)            POST /api/interview │
+        │      │                                                      │           │
+        │ 播放 ──▶ LED2 常亮 ◀── base64 PCM 音频 ◀──────────────────────┘           │
+        └──────────────────────────────────────┬──────────────────────────────────┘
+                                               │  HTTP
+                                    ┌──────────▼──────────┐
+                                    │  Flask（云端服务）   │
+                                    │  ASR ─▶ LLM ─▶ TTS  │
+                                    │  （小米 MIMO API）   │
+                                    └─────────────────────┘
 ```
 
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
+**亮点**：
+
+| # | 亮点 | 说明 |
+|---|------|------|
+| 1 | **真机端到端跑通** | 健康检查 → 录音 → ASR 原文正确 → 多轮上下文 → TTS 播放，全链路在 DshanPI 开发板上实测通过 |
+| 2 | **完整的物理交互** | 只用 2 个按键 + 2 个 LED，不依赖屏幕与串口；`main()` 常驻，随时按键开一轮 |
+| 3 | **静音自动收尾** | 边说边判 RMS，说完自动停下（门限 500），不必等满计时上限 |
+| 4 | **不必重烧就能调** | 面试岗位、静音门限、录音上限、服务器地址都可用 NSH 环境变量在运行期覆盖 |
+| 5 | **错误的可读化** | 网络/解析/云端缺 key 等失败路径都给出中文可读提示，不吐裸错误码 |
 
 ---
 
-## 附：仓库命名规范
+## 二、选题方向
 
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_151_mianbao`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+**AI 硬件产品创新**。
+
+选它的理由：这个作品的价值不在"又一个聊天应用"，而在**把大模型塞进一个专用形态的硬件**里 —— 一块开发板 + 一个按键，就是一台面试练习机。端侧负责它最擅长的事（实时采集、状态反馈、低延迟播放），云端负责它最擅长的事（识别、推理、合成），中间的边界（什么时候开始录、什么时候算说完、断网了怎么办）才是硬件产品真正要解决的问题。这些边界问题我们在这次开发里逐个踩过并落地成了代码里的判断，详见 `documents/progress_audit_2026-09-11.md`。
+
+---
+
+## 三、目录结构
+
+```text
+contest2026_151_mianbao/
+├── app/                          # 端侧应用（C，跑在开发板上）
+│   ├── ai_interview/             # ★ 作品主程序
+│   │   ├── main.c                #   主线程：按键扫描 + LED 刷新 + 事件队列（100ms 节拍）
+│   │   ├── state_machine.c/.h    #   状态机：IDLE/RECORDING/UPLOADING/PLAYING/ERROR + LED 映射
+│   │   ├── network_client.c/.h   #   libcurl 上传音频 / 解析响应 / 上传下载的错误分类
+│   │   ├── audio_io.c/.h         #   aw-alsa 采集与播放、下混、数字增益、RMS 门限
+│   │   ├── app_config.h          #   全部可调参数（Kconfig 默认值 + 运行期环境变量覆盖）
+│   │   ├── Kconfig / Makefile / Make.defs / CMakeLists.txt
+│   │   └── tests/                #   端侧单元测试（含 fixtures 与 run.sh）
+│   ├── ai_interview_test/        # 集成测试程序：验证软链、构建系统与硬件平台
+│   ├── led_test/ button_test/    # LED / 按键的最小验证程序（调试期产物，保留供复现排查）
+│   └── hello_app/                # 组委会模板样例（未使用）
+├── cloud/                        # 云端服务（Python / Flask）
+│   ├── app.py                    #   HTTP 入口：/api/interview、/api/health
+│   ├── asr_service.py            #   语音识别（小米 MIMO）
+│   ├── llm_service.py            #   大模型问答（多轮上下文）
+│   ├── tts_service.py            #   语音合成（预置音色"冰糖"）
+│   ├── session_manager.py        #   会话与多轮上下文管理
+│   └── requirements.txt
+├── skills/                       # Prompt / Skill 定义（面试官人设、提问、点评）
+├── documents/                    # 设计文档与工作台账
+│   ├── progress_audit_2026-09-11.md   # ★ 工作台账：模块完成度、风险清单、每日进展、演示日手册
+│   ├── project_status.md              # 项目状态与硬件验证记录
+│   └── api_protocol.md                # 端云接口协议
+├── logs/                         # AI Coding 日志（按组委会手册导出）
+├── tools/                        # 仓库工具（提交前的日志密钥清洗）
+├── contest2026_151_mianbao.xml   # 本队 manifest：把上面各目录软链进 openvela 编译树
+└── README.md                     # 本文件
+```
+
+> `board/`、`quickapp/` 是组委会给的另外两个赛道骨架，本作品未使用（manifest 中的映射保留，不影响编译）。
+
+---
+
+## 四、运行方式
+
+复现分三步：**拉工程 → 起云端 → 编板子**。下面每一步都写清了命令与判断成功的依据。
+
+### 4.1 硬件与前置条件
+
+| 项 | 说明 |
+|----|------|
+| 开发板 | DshanPI openvela Devkit（全志 R528 / T113S3） |
+| 板载外设 | 数字麦克风（DMIC）、2 个用户按键（K1/K2）、2 个 LED |
+| 串口 | 115200，板子的 NSH 控制台 |
+| 网络 | 开发板与云端服务需在同一可达网络（见 4.6） |
+| 工程 | 用本仓 manifest 拉取：`repo init -u <本仓地址> -b dev-ai-contest-2026 -m contest2026_151_mianbao.xml && repo sync -c -j8` |
+| 密钥 | 云端需要小米 MIMO API key（**不入仓库**，见 4.2） |
+
+同步完成后，本仓位于工作区 `contest2026_151_mianbao/`，openvela 全量源码（含板级支持的 `vendor/allwinnertech/`）在工作区根目录。
+
+### 4.2 云端服务（Flask）
+
+```bash
+cd contest2026_151_mianbao/cloud
+
+# API key 只放在环境变量里，绝不写进代码或提交
+pip install -r requirements.txt
+export MIMO_API_KEY="<你的小米 MIMO API key>"
+python3 app.py                      # 监听 0.0.0.0:5000
+```
+
+**判断成功的依据**：启动时会打印 `API Key: sk-xxxxxxxxxx...`（前 10 位）。**没看到这行就是没读到 key。**
+
+| 接口 | 方法 | 用途 |
+|------|------|------|
+| `/api/health` | GET | 健康检查，端侧启动即可自检 |
+| `/api/interview` | POST | 主链路：上传 base64 WAV，返回文本 + base64 音频（协议见 `documents/api_protocol.md`） |
+
+> ⚠️ **忘了设 key 的典型症状**：接口返回 HTTP 200，但端侧播不出声，串口打印「`tts_audio` 为空（云端多半缺 API key）」。**见到这条先查 key，不要查网络。**
+
+### 4.3 端侧编译
+
+端侧代码通过 manifest 的 `<linkfile>` 软链进 openvela 编译树（`app/ai_interview` → `packages/demos/contest2026_151_ai_interview`），**不需要手动拷贝**。
+
+**编译入口**（在工作区根目录执行，即本仓的上一级）：
+
+```bash
+cd <openvela 工作区根目录>            # 本仓的上一级
+
+# 单条命令：配置 + 编译（board config 路径按工作区根解析）
+./build.sh vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/ -e -Wno-error -j32
+```
+
+`-e -Wno-error` 不是可选项：vendor 板级代码在 `-Werror` 下编不过。
+
+**产出可烧录镜像**走厂家 SDK 的 lichee 流程（`m` 内部调用的就是上面那条 `build.sh`，`pack` 负责打包成镜像）：
+
+```bash
+cd vendor/allwinnertech/lichee
+source vela_env.sh && source envsetup.sh
+lunch_nuttx r528s3-velaevb1     # 选定目标板
+m                               # 编译，并生成 nuttx.bin → nsh.fex
+pack                            # 打包镜像
+```
+
+镜像产物：
+
+```
+vendor/allwinnertech/lichee/out/r528s3/velaevb1_nand/rtos_nuttx_r528s3-velaevb1_uart0_256Mnand.img
+```
+
+> `pack` 结尾可能返回非 0，但日志里已有 `pack finish`、镜像时间戳也已刷新，属该脚本的已知返回值怪癖，**以镜像文件是否更新为准**。
+
+**编译前请核对板级开关**（这几项直接决定录音能否采到声音、HTTP 能否发出）：
+
+```bash
+grep -E "CONFIG_AUDIO=|CONFIG_AW_AUDIO_DMIC=|CONFIG_SND_PLATFORM_SUNXI_DMIC=|CONFIG_SND_CODEC_SUN8IW20_AUDIOCODEC=|CONFIG_LIB_CURL=|CONFIG_NETUTILS_CJSON=|CONFIG_INPUT_BUTTONS=" \
+  vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/defconfig
+```
+
+以上各项都应为 `=y`。板级配置随 manifest 中的 `vendor/allwinnertech` 工程一并拉取；本作品的应用开关 `CONFIG_APP_AI_INTERVIEW` 在 `app/ai_interview/Kconfig` 里 `default y`，只要软链到位就会编进去。
+
+### 4.4 烧录
+
+1. 把 4.3 产出的 `.img` 传到 Windows 宿主机；
+2. 用全志 **PhoenixSuit** 选择该镜像，USB 连接开发板，点"烧录"；
+3. 烧录完成后用串口连板子（115200）看 NSH 控制台。
+
+### 4.5 上板运行与交互
+
+```
+nsh> ai_interview
+```
+
+> ⚠️ `main()` 是 `for(;;)` 常驻循环，**跑起来后 NSH 不会再回到 `nsh>` 提示符**，敲什么都没反应 —— 这**不是卡死**。要重新跑只能复位板子。
+
+**交互**（看 LED 就知道它在干什么）：
+
+| 操作 / 状态 | LED 表现 |
+|-------------|----------|
+| 待机（IDLE） | LED1 常亮 |
+| 按 **K1** 开始一轮 | LED1 快闪（录音中）→ 说完自动收尾 |
+| 上传与云端处理 | LED1 慢闪 |
+| 播放面试官语音 | LED2 常亮 |
+| 按 **K2** 取消当前一轮 | 回到 IDLE（错误态下按 K2 也可回 IDLE） |
+| 出错 | LED1 三短闪循环 |
+
+（K3 已初始化但功能未实现，按键动作只打日志。）
+
+### 4.6 网络地址（CLOUD_URL）
+
+云端地址**默认编译进固件**：`http://172.20.10.2:5000`。
+
+- 这个默认值对应「**手机热点 + 宿主机端口转发**」的演示拓扑：板子连热点（`172.20.10.x`），iPhone 热点网段固定为 `172.20.10.0/28`，宿主机在该网段的 `172.20.10.2` 上把 `:5000` 转发到虚拟机的 `192.168.93.141:5000`。
+- 换网络（例如安卓热点 `192.168.x.x`）时可运行期覆盖，无需重烧：
+
+  ```
+  nsh> set CLOUD_URL http://192.168.1.23:5000
+  ```
+
+  环境变量优先于编译期默认值；代码路径已通，但**本队未在真机上正面验证过这条路** —— 演示前请以实测为准，或直接按新地址重烧。
+
+### 4.7 运行期可调参数
+
+演示时改岗位、调灵敏度都不必重烧，全部走 NSH 环境变量（设定后再启动 `ai_interview`）：
+
+| 变量 | 默认 | 作用 |
+|------|------|------|
+| `CLOUD_URL` | `http://172.20.10.2:5000` | 云端地址 |
+| `ROLE` | `产品经理` | 面试官岗位/角色 |
+| `SILENCE_THRESHOLD` | `500` | 静音门限（RMS，16bit 满幅）。低于它视为"说完了" |
+| `MAX_REC_SEC` | `30` | 单轮录音上限（秒），到点强制收尾 |
+| `PCM_DEV` | `hw:snddmic` | 采集设备名（本板麦克风是**数字麦 DMIC**） |
+| `MIC_GAIN` | `4` | 数字增益 |
+
+> **门限 500 的来历**：实测安静时单块 RMS 最高 381、说话时 556~1951，500 落在两段中间，两侧余量都够。
+
+### 4.8 复现时最容易卡住的几处
+
+按"踩过的坑"排序，遇到问题先查这里（完整记录见 `documents/progress_audit_2026-09-11.md` 第十一节）：
+
+1. **录音采回来全是零** → 麦克风在**数字麦**上，设备名要用 `hw:snddmic`；设备名 `default` 解析到的是模拟 codec，那条通路上没有麦克风。
+2. **"连不上服务器"，但抓包里看不到板子的任何包** → **先看板子 `ifconfig` 里 wlan0 有没有拿到 IP、是不是 RUNNING**。开发板掉出热点是本项目所有端到端失败的共同根因，重连即恢复；**不要先去查服务端或防火墙**。
+3. **排查音频别用 `arecord -t`**（录完即放）—— 采集与回放会撞在同一个设备上，"采集支持 3 声道、播放只支持 1~2 声道"会**伪装成采集失败**。请 `arecord ... <文件>` 采到文件，再 `aplay <文件>` 单独放。
+4. **串口输出不可全信**：这板子会截断整行、也会丢中间一段；主线程与工作线程同时打印还可能互相踩出花屏。判断运行状态**以 LED 为准**。
+5. **云端 key 只在进程内存里**：`export MIMO_API_KEY=...` 没有落盘，虚拟机一重启就没了，必须重新导出（症状见 4.2）。
+
+---
+
+## 五、AI Coding 使用说明
+
+本作品从需求拆解到上板调试全程与 AI 结对完成，完整对话日志按组委会手册导出在 **`logs/`** 目录。
+
+**各环节怎么用**：
+
+| 环节 | 用法 |
+|------|------|
+| 需求拆解 / 方案设计 | 让它先读组委会文档与板级源码，列出可选方案与代价；**边界判断（如"什么时候算说完"）由人拍板** |
+| 编码 | 状态机、网络、音频三条线的代码骨架与错误分类由 AI 起草，人审后落地 |
+| 调试 | 最耗时的一环。麦克风采到全零、Wi-Fi 掉线、串口日志截断等疑难问题，都是"提出假设 → 让它去源码/镜像里找证据 → 证伪或证实"这样推进的 |
+| 文档 | 工作台账、演示日恢复手册、本 README 均由 AI 依据实测结果整理 |
+
+**日志提交**：`logs/<github-login>/<日期>/` 为导出的对话日志，仓库内已带 `tools/redact_secrets.sh`（并装了 pre-commit 钩子），提交前会拦截疑似密钥 —— 因为开发过程中日志里曾混入过 API key。
+
+**一个提醒**：AI 给的结论需要复核。本次开发中就有两条"看起来很有道理"的结论在复验时被推翻（一条关于 Wi-Fi 命令、一条关于编译命令），最终都以源码与实测为准 —— 这也是我们把每条结论都写进台账、并标注证据来源的原因。
