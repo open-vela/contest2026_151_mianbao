@@ -109,6 +109,39 @@ def health_check():
     return jsonify({"status": "ok", "message": "AI模拟面试官云端服务运行中"})
 
 
+# ============================================================
+# 对话展示页（只读）
+#
+# 给评委和组员看面试对话内容用的 —— 比在串口里看方便得多。
+#
+# ⚠️ 这一节是**纯增量**：没有改动 handle_interview 的任何一行，板子走的那条
+#    链路完全不变。页面只**读**不写，既不创建也不污染会话，所以不存在"网页
+#    把板子那场面试搅乱"的风险；也刻意不做网页发消息的输入框 —— 那会让网页
+#    也去调 /api/interview、多出一个 session。
+#
+# 页面文件是 cloud/static/index.html，由 Flask 自带的静态目录直接提供（和
+# app.py 同级的 static/），不引入任何新依赖，也不依赖任何外部 CDN ——
+# 演示现场是手机热点，外网不一定通。
+# ============================================================
+
+@app.route('/', methods=['GET'])
+def index():
+    """对话展示页。"""
+    return app.send_static_file('index.html')
+
+
+@app.route('/api/history', methods=['GET'])
+def history():
+    """只读快照：不带参数返回最近更新的那场会话；带 session_id 则返回指定会话。
+
+    没有任何会话时返回 waiting=True，前端据此显示"等待面试开始"。
+    """
+    snap = session_manager.snapshot(request.args.get('session_id'))
+    if snap is None:
+        return jsonify({"waiting": True, "session_id": "", "messages": []})
+    return jsonify(snap)
+
+
 @app.route('/api/test/asr', methods=['POST'])
 def test_asr():
     """测试 ASR 功能"""

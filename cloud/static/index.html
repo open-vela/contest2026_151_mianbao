@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 模拟面试官 · 对话记录</title>
+<style>
+  /* 全部样式内联：演示现场是手机热点，外网不一定通，不能依赖任何 CDN */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f4f6fa;
+    --card:      #ffffff;
+    --line:      #e3e8f0;
+    --ink:       #1c2333;
+    --ink-dim:   #6b7688;
+    --brand:     #2f6df6;
+    --brand-dim: #eaf0ff;
+    --ok:        #22c55e;
+    --warn:      #f59e0b;
+    --err:       #ef4444;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    flex: none;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: .2px;
+  }
+  header h1 .sub {
+    color: var(--ink-dim);
+    font-weight: 400;
+    font-size: 13px;
+    margin-left: 8px;
+  }
+
+  .badge {
+    font-size: 12.5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--brand-dim);
+    color: var(--brand);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge.grey { background: #eef1f6; color: var(--ink-dim); }
+
+  .spacer { flex: 1; }
+
+  /* 连接状态灯 */
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink-dim);
+    flex: none;
+  }
+  .dot.ok   { background: var(--ok);   box-shadow: 0 0 0 3px rgba(34,197,94,.16); }
+  .dot.err  { background: var(--err);  box-shadow: 0 0 0 3px rgba(239,68,68,.16); }
+
+  /* ---------- 对话区 ---------- */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 26px 22px 40px;
+    scroll-behavior: smooth;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  .row {
+    display: flex;
+    gap: 11px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* ⚠️ 入场动画只能挂在 .row.new 上，不能挂在 .row 上。
+     挂 .row 的话，每次重绘都会让**全部**历史消息把动画重放一遍 ——
+     来一条新消息，整屏对话就闪一次。所以只有"新到达的那几条"带 .new。 */
+  .row.new { animation: pop .22s ease-out; }
+  .row.user { flex-direction: row-reverse; }
+
+  .avatar {
+    flex: none;
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    user-select: none;
+  }
+  .row.assistant .avatar { background: linear-gradient(135deg, #4f8bff, #2f6df6); }
+  .row.user      .avatar { background: linear-gradient(135deg, #94a3b8, #64748b); }
+
+  .bubble-col { max-width: 76%; min-width: 0; }
+  .row.user .bubble-col { align-items: flex-end; display: flex; flex-direction: column; }
+
+  .who {
+    font-size: 12px;
+    color: var(--ink-dim);
+    margin: 0 4px 5px;
+  }
+
+  .bubble {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 11px 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    box-shadow: 0 1px 2px rgba(28,35,51,.04);
+  }
+  .row.user .bubble {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
+  }
+  .bubble strong { font-weight: 600; }
+  .row.user .bubble strong { color: #fff; }
+
+  /* ---------- 空态 / 错误 ---------- */
+  .empty {
+    text-align: center;
+    color: var(--ink-dim);
+    padding: 90px 20px;
+  }
+  .empty .big { font-size: 34px; margin-bottom: 14px; opacity: .5; }
+  .empty h2 { font-size: 15px; font-weight: 500; margin-bottom: 8px; color: var(--ink); }
+  .empty p  { font-size: 13.5px; line-height: 1.9; }
+  .empty code {
+    background: #eef1f6;
+    padding: 1px 7px;
+    border-radius: 5px;
+    font-size: 12.5px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  /* ---------- 回到底部 ---------- */
+  #jump {
+    position: fixed;
+    right: 26px; bottom: 26px;
+    background: var(--brand);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 9px 17px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 5px 16px rgba(47,109,246,.34);
+    display: none;
+  }
+  #jump:hover { filter: brightness(1.06); }
+
+  @media (max-width: 600px) {
+    main { padding: 18px 12px 40px; }
+    .bubble-col { max-width: 84%; }
+    header { padding: 11px 14px; gap: 9px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI 模拟面试官<span class="sub">对话记录</span></h1>
+  <span class="badge grey" id="roleBadge" style="display:none"></span>
+  <span class="badge" id="roundBadge" style="display:none"></span>
+  <span class="spacer"></span>
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">连接中…</span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap" id="wrap">
+    <div class="empty">
+      <div class="big">🎙️</div>
+      <h2>等待面试开始</h2>
+      <p>
+        在开发板上按 <code>K1</code> 说一句话，对话会自动出现在这里。<br>
+        本页只读，不会影响板子那场面试。
+      </p>
+    </div>
+  </div>
+</main>
+
+<button id="jump">有新消息 ↓</button>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 2000;
+
+  var elMain   = document.getElementById("main");
+  var elWrap   = document.getElementById("wrap");
+  var elDot    = document.getElementById("dot");
+  var elStatus = document.getElementById("statusText");
+  var elRole   = document.getElementById("roleBadge");
+  var elRound  = document.getElementById("roundBadge");
+  var elJump   = document.getElementById("jump");
+
+  var lastKey     = null;  // 内容指纹：没变就整轮跳过，不做任何 DOM 操作
+  var stickBottom = true;  // 用户往上翻时置 false，就不再强行拉回底部
+  var curSession  = null;  // 当前正在展示的 session_id
+  var renderedCount = 0;   // 已经渲染出多少条消息（用于增量追加）
+
+  // ---------- 工具 ----------
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  // 先转义、再把 **粗体** 还原成 <strong>。顺序不能反，否则等于开了 XSS 口子。
+  function fmt(s) {
+    return esc(s).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  }
+
+  function nearBottom() {
+    return elMain.scrollHeight - elMain.scrollTop - elMain.clientHeight < 80;
+  }
+
+  function setStatus(state, text) {
+    elDot.className = "dot" + (state ? " " + state : "");
+    elStatus.textContent = text;
+  }
+
+  function showEmpty() {
+    elWrap.innerHTML =
+      '<div class="empty">' +
+        '<div class="big">🎙️</div>' +
+        '<h2>等待面试开始</h2>' +
+        '<p>在开发板上按 <code>K1</code> 说一句话，对话会自动出现在这里。<br>' +
+           '本页只读，不会影响板子那场面试。</p>' +
+      '</div>';
+    elRole.style.display = "none";
+    elRound.style.display = "none";
+    curSession = null;
+    renderedCount = 0;
+  }
+
+  // ---------- 渲染 ----------
+
+  function makeRow(m, isNew) {
+    var isUser = m.role === "user";
+    return '<div class="row ' + (isUser ? "user" : "assistant") + (isNew ? " new" : "") + '">' +
+             '<div class="avatar">' + (isUser ? "候" : "面") + "</div>" +
+             '<div class="bubble-col">' +
+               '<div class="who">' + (isUser ? "候选人" : "面试官") + "</div>" +
+               '<div class="bubble">' + fmt(m.content) + "</div>" +
+             "</div>" +
+           "</div>";
+  }
+
+  function toBottom() {
+    elMain.scrollTop = elMain.scrollHeight;
+    stickBottom = true;
+    elJump.style.display = "none";
+  }
+
+  function render(d) {
+    var msgs = d.messages || [];
+
+    if (!msgs.length) { showEmpty(); return; }
+
+    elRole.textContent = d.role || "面试";
+    elRole.style.display = "";
+    var rounds = msgs.filter(function (m) { return m.role === "user"; }).length;
+    elRound.textContent = "第 " + rounds + " 轮";
+    elRound.style.display = "";
+
+    var wantBottom = stickBottom || nearBottom();
+
+    // 换了一场面试（或历史被清空/回退）：整体重建，这批不播入场动画
+    if (d.session_id !== curSession || msgs.length < renderedCount) {
+      var html = "";
+      for (var i = 0; i < msgs.length; i++) { html += makeRow(msgs[i], false); }
+      elWrap.innerHTML = html;
+      renderedCount = msgs.length;
+      curSession = d.session_id;
+      toBottom();
+      return;
+    }
+
+    // 常见情况：只多了几条。只渲染新增的，且只给它们播入场动画。
+    // 这样已有的对话不会重绘，也就不会闪。
+    if (msgs.length > renderedCount) {
+      // 先摘掉上一批的 .new，让这个类始终只代表"本次刚到的"。
+      // （此刻不摘也不会重放动画 —— insertAdjacentHTML 不重解析已有节点 ——
+      //  但标记会一批批堆积，将来谁写了依赖 .row.new 的样式就会中招。）
+      // ⚠️ 不能用 elWrap.innerHTML = ...replace(...) 来清：那样会把所有节点
+      //    重建一遍，反而让**全部**历史消息的动画重放 —— 正是要避免的闪。
+      var olds = elWrap.querySelectorAll(".row.new");
+      for (var k = 0; k < olds.length; k++) { olds[k].classList.remove("new"); }
+
+      var frag = "";
+      for (var j = renderedCount; j < msgs.length; j++) { frag += makeRow(msgs[j], true); }
+      elWrap.insertAdjacentHTML("beforeend", frag);
+      renderedCount = msgs.length;
+      if (wantBottom) { toBottom(); } else { elJump.style.display = ""; }
+    }
+  }
+
+  // ---------- 轮询 ----------
+
+  function tick() {
+    fetch("/api/history", { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) { throw new Error("HTTP " + r.status); }
+        return r.json();
+      })
+      .then(function (d) {
+        setStatus("ok", "已连接");
+
+        // 用「消息条数 + 最后一条内容」当指纹，内容没变就不重绘
+        var msgs = d.messages || [];
+        var last = msgs.length ? msgs[msgs.length - 1] : null;
+        var key  = d.session_id + "|" + msgs.length + "|" + (last ? last.content : "");
+        if (key === lastKey) { return; }
+        lastKey = key;
+
+        if (d.waiting) { showEmpty(); return; }
+        render(d);
+      })
+      .catch(function (e) {
+        setStatus("err", "连接中断（" + e.message + "）");
+      });
+  }
+
+  // 用户手动往上翻 -> 停止自动跟随；滚回底部 -> 恢复
+  elMain.addEventListener("scroll", function () {
+    if (nearBottom()) {
+      stickBottom = true;
+      elJump.style.display = "none";
+    } else {
+      stickBottom = false;
+    }
+  });
+
+  elJump.addEventListener("click", function () {
+    stickBottom = true;
+    elMain.scrollTop = elMain.scrollHeight;
+    elJump.style.display = "none";
+  });
+
+  tick();
+  setInterval(tick, POLL_MS);
+})();
+</script>
+
+</body>
+</html>
