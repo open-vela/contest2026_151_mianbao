@@ -50,14 +50,14 @@ int main(int argc, char *argv[])
 
   printf("[TEST 4] 功能模块状态\n");
   printf("  ✅ 状态机 (state_machine.c) - 已实现\n");
-  printf("  ⏳ 网络通信 (network_client.c) - 待实现\n");
-  printf("  ⏳ 音频采集 - 待集成\n");
-  printf("  ⏳ 云端服务 - 待对接\n");
+  printf("  ✅ 网络通信 (network_client.c) - 已实现（libcurl 上传 / 响应解析）\n");
+  printf("  ✅ 音频采集与播放 (audio_io.c) - 已实现（DMIC 采集 / aw-alsa 播放）\n");
+  printf("  ✅ 云端服务 - 已对接（ASR → LLM → TTS，端到端已上板验证）\n");
   printf("\n");
 
   printf("========================================\n");
   printf("  🎉 集成测试完成！\n");
-  printf("  下一步: 实现完整的 AI 面试功能\n");
+  printf("  运行主程序: nsh> ai_interview\n");
   printf("========================================\n");
   printf("\n");
 

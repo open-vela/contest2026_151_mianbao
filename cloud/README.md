@@ -1,8 +1,7 @@
 # AI模拟面试官 — 云端服务
 
 > 负责：A同学  
-> 更新时间：2026-07-12  
-> 正式开发开始：2026-07-16
+> 创建：2026-07-12 · 最近更新：2026-09-14（第三节 LLM/会话状态、第五节启动方式、第八节完成情况）
 
 ---
 
@@ -65,11 +64,22 @@ tts_text_to_audio_stream(text, output_file, voice, style)  # 流式合成，保�
 
 ### 3.3 LLM 服务 (`llm_service.py`)
 
-- ⏳ 骨架代码（待完善）
+- ✅ 小米 MIMO LLM 接入，多轮上下文面试问答
+- ✅ 按 `skills/*.json` 加载人设与提示词（`start_interview` / `next_question` / `evaluate_answer` / `generate_feedback`）
+- ✅ 返回 `next_action`（`continue` 继续提问 / `finish` 出报告）供端侧状态机判断
+
+**主要函数：**
+```python
+start_interview(role)                     # 开场提问
+next_question(role, history, last_answer) # 追问
+evaluate_answer(role, question, answer)   # 单题点评
+generate_feedback(role, history)          # 总结报告
+```
 
 ### 3.4 会话管理 (`session_manager.py`)
 
-- ⏳ 骨架代码（待完善）
+- ✅ 会话创建 / 复用、user 与 assistant 消息入历史、超时会话清理（默认 3600s）
+- ✅ 上下文由 `get_history()` 提供给 LLM，实现多轮追问
 
 ---
 
@@ -139,11 +149,14 @@ python3 demo_interview.py
 python3 demo_interview.py --full
 ```
 
-### 5.4 启动 Flask 服务（待完善）
+### 5.4 启动 Flask 服务
 
 ```bash
-python3 app.py
+export MIMO_API_KEY="<小米 MIMO API key>"   # 只放环境变量，不入仓库；忘设则 TTS 静默返回空音频
+python3 app.py                              # 监听 0.0.0.0:5000
 ```
+
+启动日志会打印 `API Key: sk-xxxxxxxxxx...`（前 10 位）。端侧（开发板）通过 `POST /api/interview` 调用，接口说明见第七节与 `../documents/api_protocol.md`。
 
 ---
 
@@ -188,31 +201,16 @@ client = OpenAI(
 
 ---
 
-## 八、下一步计划
+## 八、开发计划完成情况
 
-> ⚠️ 正式开发从 **7月16日** 开始，以下为开发启动后的计划
+> 2026-09-14 更新：原「下一步计划」各项均已完成。接口路径以实际实现为准（与当时设想的 `/asr`、`/tts`、`/interview` 略有出入）。
 
-### 第一阶段（7月16日 - 7月20日）
-
-1. **完善 Flask API** (`app.py`)
-   - `/asr` 接口：接收音频，返回识别文字
-   - `/tts` 接口：接收文字，返回音频
-   - `/interview` 接口：完整的面试问答流程
-
-2. **集成 LLM 服务** (`llm_service.py`)
-   - 对接小米 MIMO LLM API ✅ 已完成
-   - 实现面试问答逻辑 ✅ 已完成
-   - 与 Flask API 集成
-
-### 第二阶段（7月21日 - 7月25日）
-
-3. **完善会话管理** (`session_manager.py`)
-   - 面试状态维护
-   - 对话历史记录
-
-4. **端云联调**
-   - 端侧录音 → 云端 ASR → LLM → TTS → 端侧播放
-   - 完整面试流程测试
+| 计划项 | 实际实现 | 状态 |
+|--------|----------|------|
+| 完善 Flask API (`app.py`) | `/api/interview`（主链路）、`/api/health`、`/api/test/asr`、`/api/test/tts` | ✅ |
+| 集成 LLM 服务 (`llm_service.py`) | 对接小米 MIMO LLM，多轮上下文问答 + `next_action` 控制 | ✅ |
+| 完善会话管理 (`session_manager.py`) | 会话复用、对话历史、超时清理 | ✅ |
+| 端云联调 | 录音 → ASR → LLM → TTS → 端侧播放，**已在开发板上端到端验证**（2026-09-13） | ✅ |
 
 ---
 
