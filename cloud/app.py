@@ -46,7 +46,27 @@ def handle_interview():
                 logger.info(f"[session={session_id}] ASR 识别结果: {user_text[:100]}...")
                 session.add_user_message(user_text)
             else:
-                logger.warning(f"[session={session_id}] ASR 识别失败")
+                logger.warning(f"[session={session_id}] ASR 识别失败或未识别到语音")
+
+            # ---- 空识别短路 ----
+            # 用户没说话（整轮静音）或 ASR 失败时，绝不能让 LLM 自由发挥：
+            # 实测过一次静音轮，LLM 生成了超长回复，TTS 音频 base64 让整个响应体
+            # 冲破端侧的 8MB 缓冲上限（`CLOUD_RESP_MAX`），端侧直接报错中止。
+            # 这里固定回一句短的，响应大小可控，且对用户是合理的交互。
+            if not user_text.strip():
+                reply = "抱歉，我没听清，请再说一次。"
+                logger.info(f"[session={session_id}] 空识别 -> 短路回复：{reply}")
+                session.add_ai_message(reply)
+                return jsonify({
+                    "type": "question",
+                    "text": reply,
+                    "tts_audio": tts_text_to_audio(
+                        reply, style="专业、友好、有洞察力的面试官"
+                    ),
+                    "session_id": session_id,
+                    "next_action": "continue",
+                    "user_text": ""
+                })
 
         # 调用 LLM 生成回复
         logger.info(f"[session={session_id}] 调用 LLM...")
