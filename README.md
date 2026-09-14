@@ -93,6 +93,23 @@ contest2026_151_mianbao/
 
 复现分三步：**拉工程 → 起云端 → 编板子**。下面每一步都写清了命令与判断成功的依据。
 
+### 4.0 从零复现：照着做的顺序
+
+> **一律从官方仓拉取。** 本仓是 `open-vela/contest2026_151_mianbao` 的 fork，**组员与评委请从官方仓拉** —— manifest 里 `openvela.xml` 的 remote 是**相对路径** `fetch="../open-vela/"`，只有在官方仓的地址下才会解析成 `https://github.com/open-vela/`；换成别的地址（比如某个 fork）会解析到一个不存在的 org，`repo sync` 直接失败。
+
+| # | 步骤 | 命令 / 位置 | 判断成功的依据 |
+|---|------|-------------|----------------|
+| 1 | 拉取全量工程 | 见 4.1 | 工作区里 `contest2026_151_mianbao/` 与 openvela 全量源码并列 |
+| 2 | 起云端服务 | 见 4.2 | TTS 自检输出 `key OK, <数字> 字符 base64` |
+| 3 | 编译固件 | 见 4.3 | `nuttx/nuttx.bin` 时间戳刷新 |
+| 4 | 打包镜像 | 见 4.3（lichee 流程） | `out/r528s3/velaevb1_nand/*.img` 时间戳刷新 |
+| 5 | 烧录 | 见 4.4 | 串口出现 `nsh>` 控制台 |
+| 6 | **板子连 Wi-Fi** | 见 4.5 | `ifconfig` 里 wlan0 拿到 `172.20.10.x` 且为 RUNNING |
+| 7 | 运行作品 | 见 4.5 | LED1 常亮（IDLE），按 K1 可开始 |
+| 8 | 验收全链路 | 见 4.5 | 按 K1 说一句话，几十秒后面试官语音回复 |
+
+> ⚠️ **第 6 步是每次都要做的**：板子断电重上电后**不会自动连回热点**（本队实测确认），必须手工敲那四条 `wapi` 命令。这是复现时最容易漏、也最容易误判成"云端坏了"的一步，详见 4.5。
+
 ### 4.1 硬件与前置条件
 
 | 项 | 说明 |
@@ -101,7 +118,7 @@ contest2026_151_mianbao/
 | 板载外设 | 数字麦克风（DMIC）、2 个用户按键（K1/K2）、2 个 LED |
 | 串口 | 115200，板子的 NSH 控制台 |
 | 网络 | 开发板与云端服务需在同一可达网络（见 4.6） |
-| 工程 | 用本仓 manifest 拉取：`repo init -u <本仓地址> -b dev-ai-contest-2026 -m contest2026_151_mianbao.xml && repo sync -c -j8` |
+| 工程 | 用本仓 manifest 拉取（**地址请填官方仓**，原因见 4.0）：<br>`repo init -u https://github.com/open-vela/contest2026_151_mianbao -b dev-ai-contest-2026 -m contest2026_151_mianbao.xml`<br>`repo sync -c -j8` |
 | 密钥 | 云端需要小米 MIMO API key（**不入仓库**，见 4.2） |
 
 同步完成后，本仓位于工作区 `contest2026_151_mianbao/`，openvela 全量源码（含板级支持的 `vendor/allwinnertech/`）在工作区根目录。
@@ -117,7 +134,15 @@ export MIMO_API_KEY="<你的小米 MIMO API key>"
 python3 app.py                      # 监听 0.0.0.0:5000
 ```
 
-**判断成功的依据**：启动时会打印 `API Key: sk-xxxxxxxxxx...`（前 10 位）。**没看到这行就是没读到 key。**
+**判断成功的依据**：`python3 app.py` **不会打印任何 key 信息**（`API Key: sk-...` 那句 print 在 `llm_service.py` 的 `if __name__ == "__main__"` 里，只有直接跑 `python3 llm_service.py` 才走）。**要看 key 有没有读到，请打一发 TTS**（`/api/health` 不校验 key，永远返回 ok，**不能**用它自检）：
+
+```bash
+curl -s -X POST http://127.0.0.1:5000/api/test/tts \
+  -H 'Content-Type: application/json' -d '{"text":"自检"}' \
+  | python3 -c "import sys,json; a=json.load(sys.stdin).get('audio',''); print('key OK, '+str(len(a))+' 字符 base64' if a else '⚠️ audio 为空 —— key 没读到')"
+```
+
+输出 `key OK, <数字> 字符 base64` 即正常（实测约 82000~102000 字符）。
 
 | 接口 | 方法 | 用途 |
 |------|------|------|
@@ -174,7 +199,42 @@ grep -E "CONFIG_AUDIO=|CONFIG_AW_AUDIO_DMIC=|CONFIG_SND_PLATFORM_SUNXI_DMIC=|CON
 2. 用全志 **PhoenixSuit** 选择该镜像，USB 连接开发板，点"烧录"；
 3. 烧录完成后用串口连板子（115200）看 NSH 控制台。
 
-### 4.5 上板运行与交互
+### 4.5 板子连网、上板运行与交互
+
+#### 4.5.1 先让板子连上热点（**每次上电都要做**）
+
+板子**不会自动连回热点**（本队实测确认）。上电后第一件事：
+
+```
+nsh> ifconfig
+```
+
+wlan0 拿到 `172.20.10.x` 即已连上。**没拿到就手工重连**（数字索引已对着源码核实）：
+
+```
+nsh> wapi mode  wlan0 2
+nsh> wapi psk   wlan0 <热点密码> 3
+nsh> wapi essid wlan0 <热点名>   1
+nsh> renew wlan0
+```
+
+| 参数 | 值 | 含义（`apps/wireless/wapi/src/wireless.c`） |
+|------|-----|------|
+| `mode` | `2` | `WAPI_MODE_MANAGED` —— 站点（STA）模式 |
+| `psk` | `3` | `WPA_ALG_CCMP` —— WPA2-AES，现代热点的标准选项 |
+| `essid` | `1` | `WAPI_ESSID_ON` —— 立即生效，不延迟绑定 |
+
+**顺手关掉 Wi-Fi 省电**（强烈建议）：
+
+```
+nsh> wapi power_save wlan0 off
+```
+
+Realtek 的省电模式是 wlan0 随机掉线的头号嫌疑（驱动进省电后可能漏收信标，被 AP 判为离线踢掉），而 **wlan0 掉线是本项目所有端到端失败的共同根因**。该命令的实现是「参数恰好等于 `on` 才开，其余一律关」，写 `off` 一定能关掉。
+
+> ⚠️ **`wapi save_config` 和 `wapi reconnect` 在本板固件上不存在**（敲了会报错）。它们被 `#ifdef CONFIG_WIRELESS_WAPI_INITCONF` 包着，而本板该配置为**关** —— 所以**没有"存下来下次自动连"这回事**，只能每次手工敲上面四条。要启用需改 vendor 树的板级 `defconfig` 并整个重烧，本队评估后认为不值得。
+
+#### 4.5.2 运行
 
 ```
 nsh> ai_interview
@@ -228,7 +288,7 @@ nsh> ai_interview
 按"踩过的坑"排序，遇到问题先查这里（完整记录见 `documents/progress_audit_2026-09-11.md` 第十一节）：
 
 1. **录音采回来全是零** → 麦克风在**数字麦**上，设备名要用 `hw:snddmic`；设备名 `default` 解析到的是模拟 codec，那条通路上没有麦克风。
-2. **"连不上服务器"，但抓包里看不到板子的任何包** → **先看板子 `ifconfig` 里 wlan0 有没有拿到 IP、是不是 RUNNING**。开发板掉出热点是本项目所有端到端失败的共同根因，重连即恢复；**不要先去查服务端或防火墙**。
+2. **"连不上服务器"，但抓包里看不到板子的任何包** → **先看板子 `ifconfig` 里 wlan0 有没有拿到 IP、是不是 RUNNING**（重连命令见 4.5.1）。开发板掉出热点是本项目所有端到端失败的共同根因，重连即恢复；**不要先去查服务端或防火墙** —— Windows 防火墙从头到尾都不是原因，不必为它加规则。
 3. **排查音频别用 `arecord -t`**（录完即放）—— 采集与回放会撞在同一个设备上，"采集支持 3 声道、播放只支持 1~2 声道"会**伪装成采集失败**。请 `arecord ... <文件>` 采到文件，再 `aplay <文件>` 单独放。
 4. **串口输出不可全信**：这板子会截断整行、也会丢中间一段；主线程与工作线程同时打印还可能互相踩出花屏。判断运行状态**以 LED 为准**。
 5. **云端 key 只在进程内存里**：`export MIMO_API_KEY=...` 没有落盘，虚拟机一重启就没了，必须重新导出（症状见 4.2）。
