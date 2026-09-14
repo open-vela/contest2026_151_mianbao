@@ -110,23 +110,7 @@ contest2026_151_mianbao/
 
 > ⚠️ **第 6 步是每次都要做的**：板子断电重上电后**不会自动连回热点**（本队实测确认），必须手工敲那四条 `wapi` 命令。这是复现时最容易漏、也最容易误判成"云端坏了"的一步，详见 4.5。
 
-<details>
-<summary><b>【过渡期，仅本队组员需要】官方仓尚未合并开发分支时的取码办法</b></summary>
-
-本队全部改动已由 **PR #12**（`open-vela/contest2026_151_mianbao#12`）提交官方仓，**组织者合并后本节即可忽略**。
-
-合并前，官方仓停留在 7/27 的提交，直接按 4.1 拉会拿到旧代码。此时在上面「官方地址 init + sync」之后，追加两步把本队仓切到最新（**不要改动 `-u` 地址** —— 那会让 `openvela.xml` 里 `../open-vela/` 这样的相对 remote 解析失败）：
-
-```bash
-cd contest2026_151_mianbao                    # 工作区里的本队仓目录
-git remote add fork https://github.com/xunzhekafei/contest2026_151_mianbao.git   # 已存在则跳过
-git fetch fork dev-ai-contest-2026
-git merge --ff-only fork/dev-ai-contest-2026  # 快进，不会产生合并提交
-```
-
-用 `--ff-only` 是刻意的：官方分支是它的祖先，只会快进，不可能丢改动。之后即使再跑 `repo sync` 也**不会**把代码退回去（对本项目而言是空操作）；但 **`repo sync --force-sync` 会**，别加那个参数。
-
-</details>
+> ℹ️ **第 7 步之后可选**：云端自带的对话展示页可以在浏览器里实时看每轮问答（见 4.2.1），演示时比盯串口方便。它不是复现的必需环节。
 
 ### 4.1 硬件与前置条件
 
