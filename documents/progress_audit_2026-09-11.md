@@ -678,3 +678,47 @@ n=8 太小，无法判定空返回是否由提示词引起（0/8 vs 1/8 在噪�
 **MIMO key 现状（11.5 #9 相关）**：现用 key 与 git 历史里那个旧 key **不是同一个**（比对前 16 位 sha256，两者不同；全仓库工作区与历史中都搜不到现用 key）—— 也就是说**泄露的旧 key 已经不在使用中**，风险已实质解除。仍建议演示前按原计划再轮换一次作为最终保险。
 
 **复现实验的方法（下次可直接用）**：`export MIMO_API_KEY="$(sed -n '42p' ~/test-project/README.md | tr -d '\r\n')"` → `python3 app.py` → 用 `demo` 脚本 POST 同一个 `test_tts_output.wav` 到 `session_id` 复用即可（脚本见 `/tmp/rehearsal.py`、`/tmp/compare_report.py`，会话结束会丢，逻辑见上表）。**测完记得 `pkill -f "app[.]py"`**（`pkill -f "python3 app.py"` 会匹配到自己的 shell，返回 144）。
+
+### 11.13 报告功能接上调用链路（2026-09-14，**纯云端，未上板**）
+
+**背景（承接 §11.12 的发现）**：`generate_feedback` 是死代码 —— 端侧只发 `state="recording_finished"`（`main.c:124`），而报告只在 `llm_interview()` 的 `state=="feedback"` 分支，真实链路上不可达，结尾那段「最终评估」实际是 `next_question` 即兴写的。**用户决策：纯云端接上**（不改端侧协议、不重新烧录）。
+
+**做法：把结束判据前移一轮**
+
+关键点是**结束判据本来就是云端自己算的**（`next_question()` 末尾的 `len(history) >= 20`），不是端侧告诉它的 —— 云端在第 11 轮**开始之前**就知道这是最后一轮，只是过去拿这个信息去贴 `next_action=finish` 标签，而没有拿它决定「该出报告还是该出题」。改动就是把这个已知信息用在生成**之前**：
+
+```python
+# cloud/llm_service.py
+HISTORY_FINISH_THRESHOLD = 20          # 新增：结束判据集中到一处，防止两处漂移
+
+# llm_interview() 的 recording_finished 分支：
+if len(history) - 1 >= HISTORY_FINISH_THRESHOLD:
+    return generate_feedback(role, history)
+return next_question(role, history[:-1], history[-1]["content"])
+```
+
+`len(history) - 1` 的来由：`llm_interview()` 收到的 history **含**本轮回答，`next_question()` 收到的**不含**，两者差 1（已写进代码注释，这是最容易改错的地方）。
+
+**对端侧完全透明**：同一个回合、同一个 `next_action=finish`，只有念出来的 text 变了。端侧 `main.c:207-212` 的处理（清空 `session_id`，下次 K1 开新面试）不变 —— **所以本次不需要上板**。
+
+**验证一：离线路由（桩掉 API，零成本）**
+
+| `len(history)` | 加载的 skill | next_action | type |
+|---|---|---|---|
+| 18 / 19 / 20 | `next_question` | `continue` | question |
+| 21 / 22 / 23 | `generate_feedback` | `finish` | report |
+
+**边界与改动前逐格一致**：改动前也是第 10 轮（n=20）判 `continue`、第 11 轮（n=21）判 `finish`，现在仍是这两轮，只是第 11 轮换了内容。脚本 `/tmp/route_check.py`（会话结束会丢，逻辑即上表）。
+
+**验证二：真实 API 11 轮演练（PC，不需要开发板）**
+
+沿用 §11.12 的复现流程（`session_id` 复用 + `test_tts_output.wav`）：11 轮全 HTTP 200，**单轮最大 3.01 MB（37.6%）**，合计 24.41 MB，**0 轮越界**。服务端 skill 加载序列：
+
+```
+加载 Skill: next_question      × 10   ← 第 1–10 轮
+加载 Skill: generate_feedback  ×  1   ← 第 11 轮
+```
+
+改动前这里是 `next_question` × 11、`generate_feedback` × 0。第 11 轮返回 `type=report`、`next_action=finish`，文本是一份**结构化评估报告**（总体评价 / 优点 / 待改进项 / 综合建议），不再是即兴提问。脚本 `/tmp/rehearsal2.py`。
+
+**遗留**：报告受 §11.12 加的 200 字上限约束，念出来约 40 秒（按 5 字/秒估）。若嫌演示偏短可放宽到 300 字，但**必须重测响应体**（当前余量 3.2 倍，300 字约吃掉一半）。另：`state="feedback"` 分支保留为显式覆盖入口，至今仍无调用方。
