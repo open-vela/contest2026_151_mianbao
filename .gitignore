@@ -6,3 +6,14 @@ out/
 __pycache__/
 *.pyc
 .vscode/
+
+# NuttX 应用构建戳：由 apps/Application.mk 自动生成（Make.dep 头部即写着
+# "# Gen Make.dep automatically"），make clean 会主动删除，且以 -include 引入
+# —— 缺失不影响构建，不应入库。
+.built
+.depend
+Make.dep
+
+# cloud/test_services.py 运行后在 cloud/ 下生成的测试音频（约 300KB×2，可复跑再生）
+cloud/test_tts_output.wav
+cloud/test_tts_stream_output.wav
