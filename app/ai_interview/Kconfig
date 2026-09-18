@@ -48,7 +48,16 @@ config APP_AI_INTERVIEW_CLOUD_URL
 
 config APP_AI_INTERVIEW_ROLE
 	string "Interview role"
-	default "产品经理"
+	default "AI 应用开发"
+	---help---
+		演示岗位。取值要和云端题库 question_bank/data/ 里的 role 对得上
+		（`AI 应用开发` / `AI Agent 开发` / `大模型算法工程师` /
+		`AI/ML Engineer` / `Data Scientist` / `Data Analyst`），
+		否则云端找不到参考题，会静默退化成自由提问（面试照样能跑）。
+
+		⚠️ 岗位名里有空格。运行期**不要**用 `nsh> set ROLE AI 应用开发` 覆盖 ——
+		NSH 的 set 按空白分词，值只会拿到 `AI`。要换岗位请改这里重新编译，
+		或者写成不含空格的别名（别名表见 cloud/question_bank.py 的 ROLE_ALIASES）。
 
 config APP_AI_INTERVIEW_TLS_INSECURE
 	bool "Skip TLS certificate verification (demo only)"

@@ -31,7 +31,7 @@ typedef struct {
     const char    *session_id;  /* "" 或 NULL 表示让云端新建会话 */
     const uint8_t *wav;         /* 含 44 字节头的完整 WAV（不是裸 PCM） */
     size_t         wav_len;
-    const char    *role;        /* 面试官角色，如 "产品经理" */
+    const char    *role;        /* 面试官角色，如 "AI 应用开发"（要能对上云端题库的岗位名） */
     const char    *state;       /* 录音结束固定传 "recording_finished" */
 } cloud_request_t;
 
