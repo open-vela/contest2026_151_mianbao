@@ -7,6 +7,9 @@ import json
 import logging
 from openai import OpenAI
 
+from question_bank import build_reference_block
+from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
+
 logger = logging.getLogger(__name__)
 
 # 小米 MIMO API 配置（与 ASR/TTS 统一）
@@ -106,7 +109,7 @@ def start_interview(role: str) -> dict:
     Skill: start_interview — 开始面试，生成第一个问题
 
     Args:
-        role: 面试岗位，如 "产品经理"、"前端开发工程师"
+        role: 面试岗位，如 "AI 应用开发"、"前端开发工程师"
 
     Returns:
         {"text": "面试问题", "next_action": "continue"}
@@ -149,10 +152,35 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     if not skill:
         return {"text": "抱歉，加载面试配置失败。", "next_action": "continue"}
 
-    system_prompt = skill["system_prompt"].replace("{role}", role)
+    # ---- 题库参考块（见 cloud/question_bank.py 与台账 §11.21）----
+    #
+    # ⚠️ 三条纪律，改这里之前先读 cloud/question_bank.py 的 docstring：
+    #  1. 参考块**只进 system prompt，绝不进 history**，也不许用 assistant 消息承载 ——
+    #     history 里出现参考题就是给模型递了它自己的范例，那正是 §11.20「模型抄自己」
+    #     的燃料（自我强化、越写越长、且不会自愈）。
+    #  2. 候选词用**候选人刚说的那段话**：他要接着答的内容就是选题方向。
+    #  3. 岗位映射不到题库（例如仍是旧的「产品经理」默认值）、或题库缺失时，
+    #     build_reference_block 返回 ""，提示词与没有题库时完全一致 —— 优雅退化为自由提问。
+    asked_text = " ".join(m.get("content", "") for m in history if m.get("role") == "assistant")
+    reference_block = build_reference_block(role, last_answer, asked_text, len(history) // 2)
 
-    # 构建消息（包含历史）
-    messages = list(history)
+    system_prompt = skill["system_prompt"]
+    if reference_block:
+        system_prompt = system_prompt.replace("{reference_block}", reference_block)
+    else:
+        # 空块要连占位符所在的那一行一起去掉，否则留下连续空行
+        system_prompt = system_prompt.replace("{reference_block}\n\n", "")
+        system_prompt = system_prompt.replace("{reference_block}", "")
+    # {role} 必须**最后**替换：它来自请求体，先替换的话值里若含 {reference_block}
+    # 之类的字样会被当成占位符二次替换。
+    system_prompt = system_prompt.replace("{role}", role)
+
+    # 构建消息（包含历史）。
+    # ⚠️ 历史先过 reply_guard.clean_history()：§11.20 那个故障的致命处是"模型抄自己"
+    # ——被污染的输出原样存进 history，下一轮又成了它自己的范例，**不会自愈**。
+    # 读的时候过一道闸，已经脏掉的会话就能自己恢复，不必重启云端重开一场。
+    # 干净历史经过这里是逐条 no-op（见 reply_guard 的"干净文本零改动"）。
+    messages = clean_history(history)
     messages.append({"role": "user", "content": f"候选人回答：{last_answer}\n\n请根据回答决定是追问还是提出新问题。"})
 
     result = call_llm(
@@ -166,7 +194,15 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     next_action = "finish" if len(history) >= HISTORY_FINISH_THRESHOLD else "continue"
 
     if result:
-        return {"text": result, "next_action": next_action}
+        # 出去的字也要过闸：这段文本会被 TTS **逐字念出来**，绝不能带「判断：/理由：/---」。
+        # 提示词层面已经禁过一轮，但 9/18 的 A/B 证明光靠提示词挡不住被污染的历史
+        # （删掉提示词里的错误示例后，模型改从历史里学那个格式）。剥空了用兜底问句顶上，
+        # 保证候选人听到的永远是"一句话 + 一个问号"。
+        cleaned = strip_meta(result)
+        if not cleaned:
+            logger.warning("next_question 的回复整段都是元叙述，已替换为兜底问句：%r", result[:120])
+            cleaned = FALLBACK_QUESTION
+        return {"text": cleaned, "next_action": next_action}
     else:
         return {"text": "抱歉，生成问题失败，请重试。", "next_action": "continue"}
 
@@ -314,10 +350,11 @@ def llm_interview(role: str, history: list, state: str, audio_base64: str = "") 
 # 测试
 if __name__ == "__main__":
     print("LLM 服务模块已加载")
-    print(f"API Key: {MIMO_API_KEY[:10]}..." if MIMO_API_KEY else "API Key: 未配置")
+    # 只报有没有，不报 key 内容 —— 连前缀也不打（终端输出会进日志、录屏、截图）
+    print("API Key: 已配置" if MIMO_API_KEY else "API Key: 未配置")
     print(f"Skills 目录: {SKILLS_DIR}")
 
     # 测试 start_interview
     print("\n测试 start_interview:")
-    result = start_interview("产品经理")
+    result = start_interview("AI 应用开发")
     print(f"结果: {result}")
