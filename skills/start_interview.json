@@ -3,7 +3,7 @@
   "description": "开始面试，生成第一轮面试问题",
   "trigger": "用户按键开始面试",
   "input": {
-    "role": "面试岗位，如 产品经理、前端开发工程师"
+    "role": "面试岗位，如 AI 应用开发、前端开发工程师"
   },
   "output": {
     "type": "question",

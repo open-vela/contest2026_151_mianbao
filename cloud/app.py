@@ -8,12 +8,24 @@ from llm_service import llm_interview
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from session_manager import SessionManager
+from question_bank import warmup as warmup_question_bank
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 session_manager = SessionManager()
+
+# ---- 启动时预热题库（见 cloud/question_bank.py）----
+# Flask dev server 默认多线程，第一次请求进来再加载会有并发竞争；预热一次之后就只读缓存。
+# ⚠️ 演示当天**必须看这几行日志**：题库没加载成功不会报错，只会静默退化成自由提问
+#    （面试照样能跑，但选题不再走题库）—— 缺了数据要当场发现，别到台上才发现。
+_bank = warmup_question_bank()
+if _bank["loaded"]:
+    logger.info(f"[题库] 就绪：{_bank['records']} 道题，岗位：{'、'.join(_bank['roles'])}")
+else:
+    logger.warning(f"[题库] 未加载到题目（目录 {_bank['dir']}）—— 面试将退化为自由提问，"
+                   f"不注入参考题。检查 question_bank/data/ 是否随代码一起拷过去了。")
 
 
 @app.route('/api/interview', methods=['POST'])
@@ -26,7 +38,9 @@ def handle_interview():
         session_id = data.get('session_id', '')
         audio_base64 = data.get('audio', '')
         audio_format = data.get('audio_format', 'wav')
-        role = data.get('role', '产品经理')
+        # 默认岗位与端侧 Kconfig 的默认值保持一致（板子每次都显式带 role，
+        # 这里只影响手工 curl 测试）。改成题库里有的岗位，手工测时也能拿到参考题。
+        role = data.get('role', 'AI 应用开发')
         state = data.get('state', '')
         history = data.get('history', [])
 
