@@ -37,9 +37,16 @@
 #  define CONFIG_APP_AI_INTERVIEW_CLOUD_URL "http://172.20.10.2:5000"
 #endif
 
-/* ---- 面试官角色 ---- */
+/* ---- 面试官角色 ----
+ *
+ * 取值必须和云端题库的 role 对得上（见 cloud/question_bank.py 的 ROLE_ALIASES），
+ * 对不上时云端不会报错，只会拿不到参考题、静默退化成自由提问。
+ *
+ * ⚠️ 这里带空格，所以**不能**用 `nsh> set ROLE AI 应用开发` 在运行期覆盖 ——
+ * NSH 的 set 按空白分词，最终只会拿到 `AI`。
+ */
 #ifndef CONFIG_APP_AI_INTERVIEW_ROLE
-#  define CONFIG_APP_AI_INTERVIEW_ROLE "产品经理"
+#  define CONFIG_APP_AI_INTERVIEW_ROLE "AI 应用开发"
 #endif
 
 /* ---- 单轮录音上限（秒）---- */

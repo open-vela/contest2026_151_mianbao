@@ -11,7 +11,7 @@ POST /api/interview
 {
   "session_id": "uuid-xxxx",
   "audio": "base64编码的WAV音频",
-  "role": "产品经理",
+  "role": "AI 应用开发",
   "state": "recording_finished"
 }
 ```
