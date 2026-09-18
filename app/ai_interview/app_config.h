@@ -47,9 +47,12 @@
 #  define CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS 30
 #endif
 
-/* ---- 静音判定阈值（16bit 满幅 32767 的 RMS 门限）---- */
+/* ---- 静音判定阈值（16bit 满幅 32767 的 RMS 门限）----
+ * 500 是 9/13 定的，9/14 晚按现场底噪上调到 900 —— 依据见
+ * documents/progress_audit_2026-09-11.md §11.19。
+ */
 #ifndef CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD
-#  define CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD 500
+#  define CONFIG_APP_AI_INTERVIEW_SILENCE_THRESHOLD 900
 #endif
 
 /* ---- 采集 PCM 设备名 ----
@@ -134,6 +137,10 @@ static inline unsigned int app_mic_gain(void)
  * 调法：先在日志里看实测 RMS —— 说话时取一个偏低的稳定值，安静时取偏高的，
  * 门限放在两者中间。开太低会把环境噪声当人声（永远不停），开太高会把
  * 说话当静音（录不满就截断）。
+ *
+ * 注意这不是"绝对灵敏度"，而是**当前房间底噪 + 这块板子自噪**的匹配值：
+ * 同一个固件换个房间就该重调。判据是日志里静音段那几行的"RMS 平均"，
+ * 它越过门限就意味着程序把安静当成了说话。
  */
 static inline unsigned int app_silence_threshold(void)
 {

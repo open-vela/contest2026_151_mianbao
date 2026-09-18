@@ -75,6 +75,6 @@ config APP_AI_INTERVIEW_MAX_RECORD_SECONDS
 
 config APP_AI_INTERVIEW_SILENCE_THRESHOLD
 	int "Silence detection RMS threshold (16-bit full scale)"
-	default 500
+	default 900
 
 endif
