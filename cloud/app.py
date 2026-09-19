@@ -2,6 +2,7 @@
 AI模拟面试官 — 云端 Flask 服务
 """
 from flask import Flask, request, jsonify
+import os
 import uuid
 import logging
 from llm_service import llm_interview
@@ -15,6 +16,26 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 session_manager = SessionManager()
+
+# ---- 启动时校验 MIMO_API_KEY：空 key 直接拒绝启动 ----
+# 为什么要在**启动时**拦：asr/llm/tts 三个 service 都是在模块顶层 `os.environ.get("MIMO_API_KEY", "")`，
+# 进程一起来就绑定死了 —— 之后再也补不上，运行期没有任何补救机会。
+# 而空 key 的症状是最难查的那一种：**HTTP 200，但 tts_audio 是空串**，端侧只会报
+# 「云端多半缺 API key」，看起来像网络问题。演示时录到一半才发现没声音，代价太大。
+# 宁可现在就退出。（提示词只能劝、拦不住的要在代码里拦 —— 同上。）
+_KEY = os.environ.get("MIMO_API_KEY", "")
+if not _KEY:
+    logger.error("=" * 74)
+    logger.error("⛔ MIMO_API_KEY 未设置或为空串，拒绝启动。")
+    logger.error("   空 key 不走报错路径：接口仍返回 HTTP 200，只是 tts_audio 为空 ——")
+    logger.error("   录到一半才会发现板子没声音，所以在这里停下来。")
+    logger.error("")
+    logger.error("   正确启动方式（key 在 ~/test-project/README.md 第 42 行）：")
+    logger.error("""     export MIMO_API_KEY="$(sed -n '42p' ~/test-project/README.md | tr -d '\\r\\n')\"""")
+    logger.error("   设完先自检长度：echo ${#MIMO_API_KEY}   应为 51，当前 %d" % len(_KEY))
+    logger.error("=" * 74)
+    raise SystemExit(1)
+logger.info("[密钥] MIMO_API_KEY 已加载（长度 %d）" % len(_KEY))
 
 # ---- 启动时预热题库（见 cloud/question_bank.py）----
 # Flask dev server 默认多线程，第一次请求进来再加载会有并发竞争；预热一次之后就只读缓存。
