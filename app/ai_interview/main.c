@@ -352,14 +352,31 @@ static void check_buttons(void)
     }
     g_key1_last = s1;
 
-    /* K2 下降沿：取消。置 abort，工作线程会在 100ms 粒度内退出 */
+    /* K2 下降沿：取消当前一轮 / 从错误态返回。
+     *
+     * ⚠️ 这里必须**问状态机**，不能从 `busy` 反推。早先写的是「不忙碌时说明停在
+     * ERROR 态」→ 投 EVENT_BUTTON_PRESS 回 IDLE。那个假设是错的：`!busy` 在
+     * **IDLE 同样成立**。于是待机时按一下 K2，状态机会被推进 RECORDING
+     * （state_machine.c 的 `IDLE --BUTTON_PRESS--> RECORDING`），而工作线程根本
+     * 没收到 CMD_START —— LED1 快闪、其实什么都没录，**且没有任何超时能把它救
+     * 出来**（EVENT_RECORD_TIMEOUT 全仓没有一个投递点）。只能靠再按 K1 把它带回
+     * 正轨，可那已经不是"取消"，是把机器弄糊涂了。
+     */
     if (s2 == 0 && g_key2_last == 1) {
-        printf("[Main] K2 按下 —— 取消\n");
-        g_abort = 1;
-        /* 不忙碌时说明停在 ERROR 态，按一下回 IDLE。
-         * 状态机调用放在锁外：持锁做 ioctl/printf 没有必要。 */
-        if (!busy) {
+        if (busy) {
+            /* 有活在跑：置 abort，工作线程会在 100ms 粒度内退出 */
+            printf("[Main] K2 按下 —— 取消当前一轮\n");
+            g_abort = 1;
+        } else if (state_machine_get_current_state() == STATE_ERROR) {
+            /* 真的停在错误态，按一下回待机。状态机调用放在锁外：
+             * 持锁做 ioctl/printf 没有必要。 */
+            printf("[Main] K2 按下 —— 从错误态返回待机\n");
             state_machine_post_event(EVENT_BUTTON_PRESS);
+        } else {
+            /* 待机：没有可取消的东西，**什么都不做**。
+             * 顺带不置 g_abort —— 在待机置它没有意义，只会让下一个真正开始的
+             * 轮次在起跑线上被中止。 */
+            printf("[Main] K2 按下 —— 当前待机，无操作\n");
         }
     }
     g_key2_last = s2;
