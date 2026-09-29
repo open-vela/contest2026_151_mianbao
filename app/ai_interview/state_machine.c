@@ -19,6 +19,50 @@
 static int g_led1_fd = -1;
 static int g_led2_fd = -1;
 
+/* ---- LED 输出 ---- */
+
+/* 低电平点亮。fd 打不开时静默跳过 —— 那是 init 里已经警告过的情形，
+ * 每 100ms 再报一次只会把串口刷满。 */
+static void led1_write(int on)
+{
+    if (g_led1_fd >= 0) {
+        ioctl(g_led1_fd, GPIOC_WRITE, on ? 0 : 1);
+    }
+}
+
+static void led2_write(int on)
+{
+    if (g_led2_fd >= 0) {
+        ioctl(g_led2_fd, GPIOC_WRITE, on ? 0 : 1);
+    }
+}
+
+/* ---- LED 闪烁节拍 ----
+ *
+ * state_machine_update_led() 由主循环每 100ms 调一次（main.c 的 MAIN_LOOP_MS），
+ * 所以**一个 tick ≈ 100ms**；快慢闪的差别就落在"每几个 tick 翻转一次"上。
+ *
+ * ⚠️ 原来的实现是"每次调用翻转一次"，于是 RECORDING 与 UPLOADING **闪得一样快**
+ * —— 注释里写着 200ms / 800ms，实际两个分支都是每 100ms 翻一次，人眼根本分不出
+ * 是在录音还是在上传。这正是本文件里"注释比实现乐观"的一例，改法就是把节拍
+ * 显式写成 tick 数。
+ *
+ * tick 只是**近似** 100ms：主循环里还夹着按键扫描、事件排空和 printf，串口输出
+ * 阻塞时会更长。LED 是给人看的状态提示，不需要精确计时。
+ */
+#define BLINK_HALF_FAST     2       /* 录音：亮 2 tick / 灭 2 tick（200ms 一侧）*/
+#define BLINK_HALF_SLOW     8       /* 上传：亮 8 tick / 灭 8 tick（800ms 一侧）*/
+#define ERROR_CYCLE_TICKS   12      /* 错误：三短闪（6 tick）+ 停顿（6 tick）*/
+
+static unsigned int g_led_tick = 0;
+static system_state_t g_led_tick_state = STATE_IDLE;
+
+/* 占空比 50% 的方波：half 越大越慢 */
+static int blink_square(unsigned int tick, unsigned int half)
+{
+    return ((tick / half) % 2) == 0;
+}
+
 static system_state_t g_current_state = STATE_IDLE;
 static int g_retry_count = 0;
 #define MAX_RETRY_COUNT 3
@@ -58,19 +102,13 @@ static system_state_t get_next_state(system_state_t current, system_event_t even
 static void update_led_by_state(system_state_t state)
 {
     /* 先关闭所有 LED */
-    if (g_led1_fd >= 0) {
-        ioctl(g_led1_fd, GPIOC_WRITE, 1);  /* LED1 灭 */
-    }
-    if (g_led2_fd >= 0) {
-        ioctl(g_led2_fd, GPIOC_WRITE, 1);  /* LED2 灭 */
-    }
+    led1_write(0);
+    led2_write(0);
 
     switch (state) {
         case STATE_IDLE:
             /* 待机: LED1 常亮 */
-            if (g_led1_fd >= 0) {
-                ioctl(g_led1_fd, GPIOC_WRITE, 0);  /* LED1 亮 */
-            }
+            led1_write(1);
             break;
         case STATE_RECORDING:
             /* 录音中: LED1 快闪 (200ms间隔) */
@@ -82,12 +120,10 @@ static void update_led_by_state(system_state_t state)
             break;
         case STATE_PLAYING:
             /* 播放中: LED2 常亮 */
-            if (g_led2_fd >= 0) {
-                ioctl(g_led2_fd, GPIOC_WRITE, 0);  /* LED2 亮 */
-            }
+            led2_write(1);
             break;
         case STATE_ERROR:
-            /* 错误: LED1 三短闪循环 */
+            /* 错误: LED1 三短闪循环（图案在 state_machine_update_led 里按 tick 生成）*/
             printf("[LED] 错误状态 - LED1 三短闪\n");
             break;
     }
@@ -146,59 +182,48 @@ int state_machine_is_busy(void) {
     return (g_current_state == STATE_RECORDING || g_current_state == STATE_UPLOADING || g_current_state == STATE_PLAYING);
 }
 
-/* LED 闪烁控制变量 */
-static int g_led_blink_state = 0;  /* 闪烁状态: 0=灭, 1=亮 */
-static int g_led_blink_count = 0;  /* 闪烁计数 */
-static int g_led_blink_pattern = 0; /* 闪烁模式: 0=快闪, 1=慢闪, 2=三短闪 */
-
 void state_machine_update_led(void)
 {
+    /* 换状态就把节拍归零：图案从头开始，"三短闪"才真的是三下，而不是从某个
+     * 相位中途接上（否则可能看起来只有两下）。 */
+    if (g_current_state != g_led_tick_state) {
+        g_led_tick_state = g_current_state;
+        g_led_tick = 0;
+    }
+
     switch (g_current_state) {
         case STATE_IDLE:
             /* 待机: LED1 常亮 */
-            if (g_led1_fd >= 0) {
-                ioctl(g_led1_fd, GPIOC_WRITE, 0);  /* LED1 亮 */
-            }
+            led1_write(1);
             break;
 
         case STATE_RECORDING:
-            /* 录音中: LED1 快闪 (200ms间隔) */
-            if (g_led1_fd >= 0) {
-                g_led_blink_state = !g_led_blink_state;
-                ioctl(g_led1_fd, GPIOC_WRITE, g_led_blink_state ? 1 : 0);
-            }
+            /* 录音中: LED1 快闪（200ms 一侧）*/
+            led1_write(blink_square(g_led_tick, BLINK_HALF_FAST));
             break;
 
         case STATE_UPLOADING:
-            /* 上传中: LED1 慢闪 (800ms间隔) */
-            if (g_led1_fd >= 0) {
-                g_led_blink_state = !g_led_blink_state;
-                ioctl(g_led1_fd, GPIOC_WRITE, g_led_blink_state ? 1 : 0);
-            }
+            /* 上传中: LED1 慢闪（800ms 一侧）—— 与录音的差别只在这个常数，
+             * 而原实现里两个分支写的是同一段代码，所以实际闪得一样快。 */
+            led1_write(blink_square(g_led_tick, BLINK_HALF_SLOW));
             break;
 
         case STATE_PLAYING:
             /* 播放中: LED2 常亮 */
-            if (g_led2_fd >= 0) {
-                ioctl(g_led2_fd, GPIOC_WRITE, 0);  /* LED2 亮 */
-            }
+            led2_write(1);
             break;
 
         case STATE_ERROR:
-            /* 错误: LED1 三短闪循环 */
-            if (g_led1_fd >= 0) {
-                g_led_blink_count++;
-                if (g_led_blink_count <= 6) {  /* 3次闪烁 = 6次状态切换 */
-                    g_led_blink_state = !g_led_blink_state;
-                    ioctl(g_led1_fd, GPIOC_WRITE, g_led_blink_state ? 1 : 0);
-                } else if (g_led_blink_count <= 12) {  /* 停顿 */
-                    ioctl(g_led1_fd, GPIOC_WRITE, 1);  /* LED1 灭 */
-                } else {
-                    g_led_blink_count = 0;  /* 重新开始 */
-                }
-            }
+            /* 错误: 三短闪 + 停顿。一个 12 tick 的循环：前 6 tick 里隔一个亮
+             * 一个（亮 1、灭 1、亮 1、灭 1、亮 1 —— 即三下短闪），后 6 tick 全灭。*/
+            led1_write((g_led_tick % ERROR_CYCLE_TICKS) < 6
+                       && (g_led_tick % 2) == 0);
             break;
     }
+
+    /* 先把当前相位渲染出去，再推进节拍 —— 这样换状态后的第一次调用用的是
+     * tick=0，图案起点是确定的。 */
+    g_led_tick++;
 }
 
 void led_set(led_color_t color, led_mode_t mode)
