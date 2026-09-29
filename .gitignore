@@ -17,3 +17,10 @@ Make.dep
 # cloud/test_services.py 运行后在 cloud/ 下生成的测试音频（约 300KB×2，可复跑再生）
 cloud/test_tts_output.wav
 cloud/test_tts_stream_output.wav
+
+# AI Coding 对话日志。
+# 比赛期这是组委会要求的提交项，2026-09-29 比赛结束后整体移除：内容是完整对话原文，
+# 而这份日志早已随 PR 合并进官方公开仓，继续留在本仓里只有暴露面、没有收益。
+# ⚠️ 删除只影响**当前树**——历史里的 21 个提交仍然在，且官方仓那份不归我们管，删不掉。
+# 现在 logs/ 只作为本机目录存在，不再入库。
+logs/
