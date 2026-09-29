@@ -1,0 +1,19 @@
+# 文本文件一律以 LF 入库、以 LF 检出。
+#
+# 为什么要有这个文件：本仓的工作模式是「Windows 上编辑 → push → Linux 虚拟机拉取编译」，
+# 而在此之前"不会把 CRLF 提交进仓库"这件事**隐式依赖每台机器的 core.autocrlf** ——
+# 换一个克隆、换一个 Git 客户端，配置不同就可能把 CRLF 提交进去。而 Linux 那边
+# app/ai_interview/tests/run.sh、tools/redact_secrets.sh 这类带 shebang 的脚本一旦拿到
+# CRLF，会直接报 `bad interpreter: /bin/sh^M`。
+#
+# 行尾该由**仓库自己**决定，而不是由谁在哪台机器上敲过什么 git config 决定。
+* text=auto eol=lf
+
+# ⚠️ 例外：这两份数据文件的 sha256 与上游（同作者开源项目 myagent）逐字节一致，
+# 校验和记在 question_bank/README.md 里 —— 而记的就是**当前 CRLF 字节**的哈希。
+# 实测转成 LF 后哈希会变成 6b3317ea…（zh）/ 1e78964e…（ai），与 README 对不上。
+# 所以显式禁用行尾转换，保其字节原样。
+# `-eol` 是必须写的：上面那行 `* text=auto eol=lf` 也覆盖了这两个文件，
+# 属性是**逐条**生效的，只写 `-text` 的话 eol 仍继承自 `*`（实测虽未转换，
+# 但这依赖"text 为 unset 时 eol 不生效"这条实现细节，显式清掉才不靠运气）。
+question_bank/data/*.json -text -eol
