@@ -1,7 +1,7 @@
 # AI模拟面试官 — 云端服务
 
 > 负责：A同学  
-> 创建：2026-07-12 · 最近更新：2026-09-29（第二节目录结构、新增 3.7 会话落盘与报告导出、5.5 校验脚本补 `run_tests.sh`）
+> 创建：2026-07-12 · 最近更新：2026-09-29（第二节目录结构、新增 3.7 会话落盘与报告导出、5.5 校验脚本补 `run_tests.sh`，并新增 `test_routes.py` 路由测试）
 
 ---
 
@@ -41,7 +41,8 @@ cloud/
 ├── test_score_guard.py
 ├── test_session_store.py
 ├── test_report_export.py
-├── run_tests.sh            # 顺序跑上面全部单元测试（本地与 CI 共用；跳过 test_services.py）
+├── test_routes.py          # HTTP 路由测试（需 Flask/openai；进程内 test client，不联网、不花钱）
+├── run_tests.sh            # 顺序跑上面全部测试（本地与 CI 共用；两档，见 5.5）
 ├── rehearsal.py            # 校验④  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
 ├── ab_next_question.py     # 校验⑤  提示词改版的单变量 A/B（真打 LLM）
 │
@@ -250,7 +251,7 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 
 | # | 脚本 | 验什么 | 跑法 | 通过标准 | 花钱 |
 |---|------|--------|------|----------|------|
-| ① | `bash run_tests.sh` | 全部模块的单元测试（题库 / 回复闸门 / 结束判据 / 评分校验 / 落盘 / 导出） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
+| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 评分校验 / 落盘 / 导出）+ **路由测试**（`test_routes.py`，验路由注册与内存/磁盘兜底的接线层） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
 | ② | `test_*.py` | 单独跑某一个（改哪个模块跑哪个） | `python3 test_finish_guard.py` | 全过 | 否 |
 | ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、`next_action`/`type` 逐轮对得上、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏、**无兜底文案**、导出接口 200 | 是 |
 | ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |
@@ -262,6 +263,8 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 > ①② 是纯本地的（**不需要 API key**），改完随手就能跑；③④ 会真打 API，通常只在**改提示词/改闸门/改选题逻辑**之后跑。④ 的 `--group` 支持只重测失败的那一臂（P 提示词 / B 题库 / R 报告）。
 >
 > `run_tests.sh` 会**跳过 `test_services.py`** —— 那是个真调 API、会生成 wav 的集成脚本，不是单元测试，混进 CI 会又花钱又不稳。
+>
+> **两档的分界**：纯单测那一档**不装任何第三方包**（CI 里有个作业刻意不 `pip install`，用来证明这 6 个文件真的只用标准库）；`test_routes.py` 要走 Flask 的 test client，属另一档，**装上依赖才跑**。没装依赖时它会**大声跳过**而不是静默跳过 —— 静默跳过正是上面说的那种"假绿"。Windows 上跑要指定 venv 的解释器：`PYTHON=./.venv/Scripts/python.exe bash run_tests.sh`（Git Bash 里的 `python3` 会指向微软商店的占位程序）。
 >
 > **判据补强的两条经验**（2026-09）：`rehearsal.py` 原先只查"不该出现的痕迹"（泄漏串），于是**全链路失败时它依然是绿的** —— 模型调不通 → 各处 return 兜底串 → HTTP 200、结构完整、没有泄漏串，全部判据通过。现在它专门查一类 `FALLBACK_STRINGS`（"生成报告失败"等），**兜底文案出现就算不合格**。另一条：判据要跟着判据本身变 —— 报告轮现在由结束判据决定，"末轮必是报告"只在 `--rounds 11` 或 `--say-finish` 时成立，写死会变成假失败。
 
