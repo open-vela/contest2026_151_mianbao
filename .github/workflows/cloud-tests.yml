@@ -1,8 +1,17 @@
 name: cloud-tests
 
-# 云端（cloud/**）纯单测。不装依赖、不需要密钥、不联网 —— 全部只用标准库。
+# 云端（cloud/**）测试。两个作业，跑的是**同一份** cloud/run_tests.sh ——
+# 本地怎么跑，CI 就怎么跑，判据不会漂。
 #
-# 与 cloud/run_tests.sh 是同一份判据：本地怎么跑，CI 就怎么跑。
+#   unit-tests   刻意**不装任何依赖**。它证明的是"纯单测那 6 个文件真的只用标准库"
+#                —— 装了依赖反而会掩盖"单测偷偷依赖了运行时依赖"这件事。
+#                （路由测试会在这一档里**大声跳过**，不是静默跳过，见 run_tests.sh。）
+#
+#   route-tests  装 requirements.txt，让 run_tests.sh 把**路由测试**那一档也跑上。
+#                test_routes.py 用 Flask 自带的 test client 走进程内 HTTP 往返，
+#                验路由注册 / 内存优先磁盘兜底 / 导出 —— 模块单测照不到的接线层
+#                （2026-09-29 加，起因见台账 §11.25：那批改动合并前只做过静态验证）。
+#                顺带也验证了"requirements.txt 声明的依赖确实够用"。
 #
 # 刻意**不**在这里测端侧（app/**）：那要先建完整的 openvela 工具链，代价与收益
 # 不成比例；端侧的验证靠实机烧录（见 README 的复现步骤）。
@@ -18,6 +27,7 @@ on:
 
 jobs:
   unit-tests:
+    name: 纯单测（零依赖）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,4 +40,21 @@ jobs:
       # 刻意跳过 pip install：这些测试不依赖 requirements.txt 里的任何包，
       # 装了反而会掩盖"单测偷偷依赖了运行时依赖"这件事。
       - name: 跑云端单测
+        run: bash cloud/run_tests.sh
+
+  route-tests:
+    name: 路由测试（装依赖）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # 这一档必须装依赖：test_routes.py 会真的把 Flask app 起来（进程内，不占端口）。
+      - name: 安装云端依赖
+        run: pip install -r cloud/requirements.txt
+
+      - name: 跑云端全部测试（含路由）
         run: bash cloud/run_tests.sh

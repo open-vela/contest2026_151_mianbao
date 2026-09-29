@@ -84,7 +84,7 @@ contest2026_151_mianbao/
 │   ├── rehearsal.py              #   校验①  PC 端 11 轮全流程试运行（带阈值断言）
 │   ├── ab_next_question.py       #   校验②  提示词改版的单变量 A/B（旧版 vs 新版）
 │   ├── run_tests.sh              #   校验③  顺序跑全部单元测试（本地与 CI 共用）
-│   ├── test_*.py                 #   校验③  6 个模块的单元测试（纯标准库，无第三方依赖）
+│   ├── test_*.py                 #   校验③  7 个测试文件（6 个纯标准库 + 路由测试需 Flask）
 │   ├── data/sessions/            #   运行期落盘的会话（.gitignore，不随仓库分发）
 │   └── requirements.txt
 ├── question_bank/                # 面试题库（数据 + 可复现导入脚本 + 出处说明）
