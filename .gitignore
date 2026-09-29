@@ -25,6 +25,10 @@ cloud/test_tts_stream_output.wav
 # 现在 logs/ 只作为本机目录存在，不再入库。
 logs/
 
+# 云端在 Windows 上跑用的虚拟环境（cloud/.venv，2026-09-29 起）。
+# 依赖清单是 cloud/requirements.txt，不入库 —— 它是本机环境，不是代码。
+.venv/
+
 # 云端会话落盘数据（运行期生成，见 cloud/session_store.py）。
 # 放 cloud/ 下而不是仓库根：它是**运行期产物**，只属于云端那棵树。
 # （它原本的注释写的是"刻意不放 logs/，因为那是大赛要求提交的日志目录" —— logs/ 于
