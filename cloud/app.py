@@ -1,7 +1,8 @@
 """
 AI模拟面试官 — 云端 Flask 服务
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
+import io
 import os
 import uuid
 import logging
@@ -10,12 +11,27 @@ from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
+import report_export
+import session_store
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 session_manager = SessionManager()
+
+
+def _snapshot(session_id=None):
+    """取一份会话快照：**内存优先，磁盘兜底**；都没有则返回 None。
+
+    磁盘兜底是为了让重启不再等于"上一场没了"：会话在每轮结束时落盘
+    （见 cloud/session_store.py），重启后网页仍能看到上一场、也仍能导出报告。
+    只读，不创建会话 —— 展示层调用它不会产生任何副作用。
+    """
+    snap = session_manager.snapshot(session_id)
+    if snap is not None:
+        return snap
+    return session_store.load(session_id) if session_id else session_store.load_latest()
 
 # ---- 启动时校验 MIMO_API_KEY：空 key 直接拒绝启动 ----
 # 为什么要在**启动时**拦：asr/llm/tts 三个 service 都是在模块顶层 `os.environ.get("MIMO_API_KEY", "")`，
@@ -70,7 +86,14 @@ def handle_interview():
             logger.info(f"创建新会话: {session_id}")
 
         # 获取或创建会话
+        is_new = session_manager.get_session(session_id) is None
         session = session_manager.get_or_create_session(session_id, role)
+
+        # 只在"开新会话"这一条路径上清理过期会话：正在进行的会话绝不会被扫到
+        # —— 走这条路径时它根本不在内存里。清理是为了让长期挂着的进程内存不
+        # 无界增长（会话现在还会落盘，磁盘那份不受影响）。
+        if is_new:
+            session_manager.clean_expired_sessions()
 
         # 如果有音频数据，先进行 ASR 识别
         user_text = ""
@@ -91,7 +114,12 @@ def handle_interview():
             if not user_text.strip():
                 reply = "抱歉，我没听清，请再说一次。"
                 logger.info(f"[session={session_id}] 空识别 -> 短路回复：{reply}")
-                session.add_ai_message(reply)
+                # ⚠️ 这一句**刻意不写进历史**（原先是 add_ai_message）。
+                # 它没有对应的 user 消息，塞进去会让历史变成奇数条，而报告判据是
+                # `len(history) - 1 >= 20`（llm_service.HISTORY_FINISH_THRESHOLD）
+                # —— 一次静音轮就把报告从第 11 次 K1 推迟到第 12 次，而 README
+                # 和演示脚本都写死"第 11 次出报告"。静音不是一段对话，不该进记录。
+                # 语音照常播（TTS 在下）、响应照常返回，只是不留痕。
                 return jsonify({
                     "type": "question",
                     "text": reply,
@@ -112,12 +140,28 @@ def handle_interview():
         # 将AI回复存入会话
         session.add_ai_message(ai_text)
 
+        # 报告轮 = 这一场到此结束。此前 `is_finished` **恒为 False**：finish() 写了
+        # 却从来没有调用者，于是"结束了没有"这个状态在云端根本不存在，网页也就
+        # 无从判断该不该渲染报告卡片。判据与响应体里的 type 完全一致，不另立标准。
+        if next_action != "continue":
+            session.finish()
+            logger.info(f"[session={session_id}] 面试结束（{session.question_count} 轮），"
+                        f"本轮为报告轮")
+
         # TTS 合成
         logger.info(f"[session={session_id}] 开始 TTS...")
         tts_audio_base64 = tts_text_to_audio(
             ai_text,
             style="专业、友好、有洞察力的面试官"
         )
+
+        # ---- 落盘 ----
+        # 位置是刻意的：**TTS 之后、return 之前**。
+        #   * 放前面就把 ASR+LLM+TTS 之后又叠一次磁盘 I/O 到响应延迟上（板子正阻塞
+        #     等这个回包）；
+        #   * save() 自己吞掉所有异常（见 cloud/session_store.py），落盘失败只是
+        #     少一份存档，绝不能把一次成功的面试变成 500。
+        session_store.save(_snapshot(session_id))
 
         return jsonify({
             "type": "question" if next_action == "continue" else "report",
@@ -169,12 +213,37 @@ def index():
 def history():
     """只读快照：不带参数返回最近更新的那场会话；带 session_id 则返回指定会话。
 
-    没有任何会话时返回 waiting=True，前端据此显示"等待面试开始"。
+    内存里没有时回落到磁盘（重启后仍能看到上一场）。都没有才返回 waiting=True，
+    前端据此显示"等待面试开始"。
     """
-    snap = session_manager.snapshot(request.args.get('session_id'))
+    snap = _snapshot(request.args.get('session_id'))
     if snap is None:
         return jsonify({"waiting": True, "session_id": "", "messages": []})
     return jsonify(snap)
+
+
+@app.route('/api/export/<session_id>', methods=['GET'])
+def export_session(session_id):
+    """把一场面试导出成可下载的文件：`?format=md`（默认）或 `?format=json`。
+
+    纯增量：只**读**会话，不创建、不修改，因此对板子那条链路没有任何影响。
+    内存优先、磁盘兜底 —— 重启之后照样能把上一场的报告导出来。
+    """
+    snap = _snapshot(session_id)
+    if snap is None:
+        return jsonify({"error": "找不到这场面试（会话不存在或已过期）"}), 404
+
+    rendered = report_export.export(snap, request.args.get('format', 'md'))
+    if rendered is None:
+        return jsonify({"error": "不支持的格式，可选 md / json"}), 400
+
+    body, mimetype, filename = rendered
+    # BytesIO 直接送，不落临时文件：报告只有几十 KB，且没有"下载完要清理"的问题。
+    # 文件名是纯 ASCII（见 report_export.filename），所以不涉及 RFC 5987 编码。
+    payload = io.BytesIO(body.encode('utf-8'))
+    payload.seek(0)
+    return send_file(payload, mimetype=mimetype, as_attachment=True,
+                     download_name=filename)
 
 
 @app.route('/api/test/asr', methods=['POST'])

@@ -171,6 +171,54 @@
     font-family: ui-monospace, Menlo, Consolas, monospace;
   }
 
+  /* ---------- 报告卡片（面试结束后出现） ---------- */
+  /* 刻意单独放一个容器在消息流之后，而不是混进 .row 里：
+     消息区走的是**增量追加**（靠 renderedCount 记到哪了），混进一个"每场只该
+     出现一次"的元素，很容易在某次追加里被渲染两遍。独立容器就能每次整块重建，
+     幂等、与增量逻辑完全无关。 */
+  #report { display: none; }
+  .report-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(28,35,51,.04);
+    margin-bottom: 22px;
+  }
+  .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  .btn {
+    font-size: 13px;
+    text-decoration: none;
+    color: #fff;
+    background: var(--brand);
+    border-radius: 9px;
+    padding: 5px 13px;
+    white-space: nowrap;
+  }
+  .btn.ghost { background: var(--brand-dim); color: var(--brand); }
+  .btn:hover { filter: brightness(1.05); }
+  .card-note { font-size: 12.5px; color: var(--ink-dim); margin-top: 9px; }
+
+  /* 评分区：没有 score 字段时整段不渲染 */
+  .score { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 13px; }
+  .total { font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; }
+  .total b { font-size: 27px; color: var(--brand); font-weight: 700; margin-right: 3px; }
+  .dims { display: grid; gap: 11px; }
+  .dim-top { display: flex; justify-content: space-between; font-size: 13px; }
+  .bar {
+    height: 6px; background: #eef1f6; border-radius: 999px;
+    overflow: hidden; margin-top: 4px;
+  }
+  /* 刻意不加 transition：卡片每次 render 都会整块重建，带动画就会反复闪。 */
+  .bar i { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
+  .dim-comment { font-size: 12.5px; color: var(--ink-dim); margin-top: 4px; }
+  .summary {
+    font-size: 13px; margin-top: 12px; padding-top: 11px;
+    border-top: 1px dashed var(--line);
+  }
+  .badge.ok { background: #e8f8ee; color: #15803d; }
+
   /* ---------- 回到底部 ---------- */
   #jump {
     position: fixed;
@@ -201,6 +249,7 @@
   <h1>AI 模拟面试官<span class="sub">对话记录</span></h1>
   <span class="badge grey" id="roleBadge" style="display:none"></span>
   <span class="badge" id="roundBadge" style="display:none"></span>
+  <span class="badge ok" id="doneBadge" style="display:none">已结束</span>
   <span class="spacer"></span>
   <div class="status">
     <span class="dot" id="dot"></span>
@@ -219,6 +268,8 @@
       </p>
     </div>
   </div>
+  <!-- 报告卡片容器：面试结束后由 renderReport() 整块填充（见脚本注释） -->
+  <div class="wrap" id="report"></div>
 </main>
 
 <button id="jump">有新消息 ↓</button>
@@ -235,6 +286,8 @@
   var elStatus = document.getElementById("statusText");
   var elRole   = document.getElementById("roleBadge");
   var elRound  = document.getElementById("roundBadge");
+  var elDone   = document.getElementById("doneBadge");
+  var elReport = document.getElementById("report");
   var elJump   = document.getElementById("jump");
 
   var lastKey     = null;  // 内容指纹：没变就整轮跳过，不做任何 DOM 操作
@@ -274,8 +327,75 @@
       '</div>';
     elRole.style.display = "none";
     elRound.style.display = "none";
+    elDone.style.display = "none";
+    elReport.style.display = "none";
+    elReport.innerHTML = "";
     curSession = null;
     renderedCount = 0;
+  }
+
+  // ---------- 报告卡片 ----------
+
+  // 面试结束后出现的卡片：结束标识 + 下载入口 +（有的话）结构化评分。
+  //
+  // 报告**正文**不在这里重复渲染 —— 它就是最后那条 assistant 消息，已经在
+  // 上方的气泡里了。复制一份到卡片里迟早会出现"两处不一致"，而且长文本读两遍
+  // 没有意义。卡片负责的是"这场结束了"这件事，以及拿走的入口。
+  function reportCard(d) {
+    var sid = esc(encodeURIComponent(d.session_id || ""));
+    var rounds = (d.messages || []).filter(function (m) { return m.role === "user"; }).length;
+    var html =
+      '<div class="report-card">' +
+        '<div class="card-head">' +
+          '<span class="card-title">面试报告</span>' +
+          '<span class="spacer"></span>' +
+          '<a class="btn" href="/api/export/' + sid + '?format=md">下载 Markdown</a>' +
+          '<a class="btn ghost" href="/api/export/' + sid + '?format=json">JSON</a>' +
+        '</div>' +
+        '<div class="card-note">本场共 ' + rounds +
+          ' 轮问答，报告正文见上方最后一条「面试官」消息。</div>';
+
+    var s = d.score;
+    if (s && s.dimensions && s.dimensions.length) {
+      html += '<div class="score">';
+      if (typeof s.total === "number") {
+        html += '<div class="total"><b>' + esc(s.total) + '</b>/ 100</div>';
+      }
+      html += '<div class="dims">';
+      for (var i = 0; i < s.dimensions.length; i++) {
+        var dim = s.dimensions[i] || {};
+        var max = dim.max || 10;
+        var pct = Math.max(0, Math.min(100, (dim.score / max) * 100));
+        html +=
+          '<div class="dim">' +
+            '<div class="dim-top"><span>' + esc(dim.name) + '</span>' +
+              '<b>' + esc(dim.score) + ' / ' + esc(max) + '</b></div>' +
+            '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+            (dim.comment ? '<div class="dim-comment">' + fmt(dim.comment) + '</div>' : "") +
+          '</div>';
+      }
+      html += '</div>';
+      if (s.missing && s.missing.length) {
+        html += '<div class="dim-comment">本次未评：' + esc(s.missing.join("、")) + '</div>';
+      }
+      if (s.summary) { html += '<div class="summary">' + fmt(s.summary) + '</div>'; }
+      html += '</div>';
+    }
+
+    return html + '</div>';
+  }
+
+  // 每次 render 都整块重建（幂等），与消息区的增量追加互不干扰。
+  function renderReport(d) {
+    if (!d.is_finished) {
+      elReport.style.display = "none";
+      elReport.innerHTML = "";
+      elDone.style.display = "none";
+      return;
+    }
+    elDone.style.display = "";
+    elReport.innerHTML = reportCard(d);
+    elReport.style.display = "";
   }
 
   // ---------- 渲染 ----------
@@ -307,6 +427,9 @@
     var rounds = msgs.filter(function (m) { return m.role === "user"; }).length;
     elRound.textContent = "第 " + rounds + " 轮";
     elRound.style.display = "";
+
+    // 报告卡片：独立于下面那套增量逻辑（自己整块重建，幂等）
+    renderReport(d);
 
     var wantBottom = stickBottom || nearBottom();
 
@@ -351,10 +474,17 @@
       .then(function (d) {
         setStatus("ok", "已连接");
 
-        // 用「消息条数 + 最后一条内容」当指纹，内容没变就不重绘
+        // 指纹：消息条数 + 最后一条内容 + 结束标志 + 评分状态，全没变就不重绘。
+        //
+        // ⚠️ `is_finished` 和评分状态**必须**进指纹：消息条数与内容都相同时，
+        // 这两样仍可能变 —— 评分是后台线程算完才回填的（报告落库在先、评分在后），
+        // 只按消息算指纹的话，评分永远等不到那次重绘。全都不变才跳过。
         var msgs = d.messages || [];
         var last = msgs.length ? msgs[msgs.length - 1] : null;
-        var key  = d.session_id + "|" + msgs.length + "|" + (last ? last.content : "");
+        var score = d.score || null;
+        var key  = d.session_id + "|" + msgs.length + "|" + (last ? last.content : "") +
+                   "|" + (d.is_finished ? "1" : "0") +
+                   "|" + (score ? (score.status + score.total + (score.dimensions || []).length) : "");
         if (key === lastKey) { return; }
         lastKey = key;
 

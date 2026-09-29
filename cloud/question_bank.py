@@ -76,6 +76,11 @@ def _ordered_categories(categories: set) -> list:
     ordered.extend(sorted(remaining))
     return ordered
 
+# 候选人回答短于这个字数时**不做关键词选题**（见 build_reference_block）。
+# 取 4：三个字以内的回答（"嗯"、"好"、"然后呢"）不足以确定选题方向，
+# 而真实的技术回答几乎不可能少于 4 个字。
+MIN_QUERY_CHARS = 4
+
 _BLOCK_HEADER = "【本轮参考题（仅供你选题方向，不要照读）】"
 _BLOCK_RULES = (
     "使用要求：从上列题目里挑一道最贴合候选人刚才所说内容的，用你自己的话问出来，"
@@ -88,6 +93,19 @@ _BLOCK_RULES = (
 # ⚠️ 目标必须是题库里真实存在的 role 字符串（test_question_bank.py 会断言），
 # 写错不会报错、只会静默退化成自由提问。
 ROLE_ALIASES = {
+    # ---- 短键必须显式列在这里 ----
+    # 为什么：`normalize_role` 的第 ③ 步是**双向包含取最长**，对 2~3 个字的短键
+    # 来说那等于"谁的名字最长就归谁"，结果反直觉且没人会去查：
+    #   "AI"   → 命中 `AI/ML Engineer`（因为它比 `AI 应用开发` 长）
+    #   "算法" → 命中 `大模型算法工程师`（碰巧是对的，但靠的是包含关系）
+    #   "ML"   → 命中 `AI/ML Engineer`（碰巧是对的）
+    # 显式写进别名表，行为就变成可读、可测、可预期的一行。
+    # 注意别名表在第 ③ 步**之前**生效（见 normalize_role 的四步），所以这些条目
+    # 一定赢过包含匹配。
+    "ai": "AI 应用开发",              # 中文语境下裸 "AI" 指应用方向，不是英文岗
+    "算法": "大模型算法工程师",
+    "ml": "AI/ML Engineer",
+    "agent": "AI Agent 开发",
     # AI 应用开发（本次演示岗位）
     "ai开发": "AI 应用开发",
     "ai应用": "AI 应用开发",
@@ -430,6 +448,18 @@ def build_reference_block(role: str, query: str = "", asked_text: str = "",
     history 里出现参考题就等于给模型递了自己的范例 —— §11.20「模型抄自己」
     的燃料正是 assistant 消息，会自我强化、越写越长、且不会自愈。
     """
+    # 候选人这轮几乎没说话（"嗯"、"好"、"然后呢"）：关键词检索这时**退化**——
+    # 实测 `pick_candidates("AI 应用开发", "嗯")` 与 `(..., "好")` 返回的是**同样
+    # 三道**彼此不相干的题（所有记录同分，谁入选完全靠 tie-break 的顺序）。
+    # 把它当"选题方向"注入，只会把面试带到随机话题上。
+    # 这时**就当没有方向**，返回空块退化为自由提问 —— 走的是"题库缺失"那条
+    # 已经验证过的路径，不是新逻辑。
+    #
+    # ⚠️ 这里只管"注不注入参考题"，**不**把短回答当静音处理：静音的判定在
+    # app.py 的空识别短路（那边看的是 ASR 有没有识别出内容，与本函数无关）。
+    if len(re.sub(r"\s+", "", query or "")) < MIN_QUERY_CHARS:
+        return ""
+
     candidates = pick_candidates(role, query, asked_text, round_index, limit)
     if not candidates:
         return ""

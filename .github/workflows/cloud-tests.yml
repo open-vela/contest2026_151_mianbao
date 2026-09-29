@@ -1,0 +1,33 @@
+name: cloud-tests
+
+# 云端（cloud/**）纯单测。不装依赖、不需要密钥、不联网 —— 全部只用标准库。
+#
+# 与 cloud/run_tests.sh 是同一份判据：本地怎么跑，CI 就怎么跑。
+#
+# 刻意**不**在这里测端侧（app/**）：那要先建完整的 openvela 工具链，代价与收益
+# 不成比例；端侧的验证靠实机烧录（见 README 的复现步骤）。
+on:
+  push:
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloud-tests.yml"
+  pull_request:
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloud-tests.yml"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本与开发机保持一致（Python 3.10），避免"本地绿、CI 红"来自解释器差异
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # 刻意跳过 pip install：这些测试不依赖 requirements.txt 里的任何包，
+      # 装了反而会掩盖"单测偷偷依赖了运行时依赖"这件事。
+      - name: 跑云端单测
+        run: bash cloud/run_tests.sh
