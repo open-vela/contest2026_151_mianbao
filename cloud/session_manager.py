@@ -39,10 +39,19 @@ class SessionManager:
     def get_session(self, session_id: str):
         return self.sessions.get(session_id)
     def clean_expired_sessions(self, max_age: int = 3600):
+        """清掉太久没更新的会话（默认 1 小时）。
+
+        调用点在 `app.py` 的**新建会话**路径上 —— 正在进行的会话不在那条路径上，
+        所以绝不会被误清。清理只影响内存；会话每轮都落盘（见 cloud/session_store.py），
+        磁盘那份不受影响。
+        """
         now = time.time()
         expired = [sid for sid, sess in self.sessions.items() if now - sess.updated_at > max_age]
         for sid in expired:
-            del self.sessions[sid]
+            # 用 pop 而不是 del：这条路径今天看着不会并发，但"顺手删一个可能已经
+            # 不存在的键"是 KeyError 的经典来源，而它的后果是 500 —— 对一次面试来说
+            # 代价远大于这五个字符。
+            self.sessions.pop(sid, None)
 
     # ------------------------------------------------------------------
     # 以下两个方法**只读**，专供网页展示用（cloud/app.py 的 /api/history）。

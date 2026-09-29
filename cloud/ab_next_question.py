@@ -334,8 +334,29 @@ def main() -> int:
     if args.dry_run:
         return dry_run(INPUTS)
 
+    # 参数自检先做。两个都是"跑了但什么都没验证"的入口，必须在这里拦住 ——
+    # 一个实验脚本最坏的结局不是崩掉，是打印 ✅ 而什么都没测。
+    if args.n < 1:
+        print(f"❌ --n 必须是正数（收到 {args.n}）。0 个样本什么都证明不了，"
+              f"而且空样本会让后面的平均值/比例全部除零崩栈。")
+        return 1
+    groups = "".join(sorted(set(args.group.upper())))     # 大小写、顺序、重复都不计较
+    unknown = [c for c in groups if c not in "PBR"]
+    if not groups or unknown:
+        print(f"❌ --group 只认 P（提示词）/ B（题库）/ R（报告）三种，"
+              f"收到 {args.group!r}。一组都跑不了 → 判据为空 → 会误报 ✅。")
+        return 1
+
+    # `load_skill` 加载失败时返回的是 `{}`（见 llm_service.py），不是抛异常 ——
+    # 于是下面取 ["system_prompt"] 就是 KeyError 崩栈，而且崩在友好提示**之前**，
+    # 报错信息只剩一行 KeyError: 'system_prompt'，看不出是 skills/ 目录没拷过来。
     next_skill = llm_service.load_skill("next_question")
     feedback_skill = llm_service.load_skill("generate_feedback")
+    if not next_skill.get("system_prompt") or not feedback_skill.get("system_prompt"):
+        print(f"❌ 读不到 skill 提示词（next_question={'有' if next_skill else '空'}, "
+              f"generate_feedback={'有' if feedback_skill else '空'}）。"
+              f"检查 cloud/skills/ 是否随代码一起拷过来了。")
+        return 1
     new_next_prompt = next_skill["system_prompt"]
     new_feedback_prompt = feedback_skill["system_prompt"]
     # 两臂共用同一组采样参数，提示词是唯一变量
@@ -355,13 +376,13 @@ def main() -> int:
 
     report = {}
 
-    if "P" in args.group:
+    if "P" in groups:
         print(f"\n=== P 组：旧提示词 vs 新提示词（题库关，n={args.n}）===")
         old = run_arm("旧", INPUTS, args.n, OLD_NEXT_QUESTION_PROMPT, False, next_tokens)
         new = run_arm("新", INPUTS, args.n, new_next_prompt, False, next_tokens)
         report["P"] = (summarize(old), summarize(new))
 
-    if "B" in args.group:
+    if "B" in groups:
         usable = samples_for(INPUTS, "B", args.n)
         print(f"\n=== B 组：题库关 vs 题库开（新提示词，n={args.n}；"
               f"用 {len(usable)} 个输入，跳过映射不到题库的「产品经理」）===")
@@ -369,7 +390,7 @@ def main() -> int:
         on = run_arm("开", usable, args.n, new_next_prompt, True, next_tokens)
         report["B"] = (summarize(off), summarize(on))
 
-    if "R" in args.group:
+    if "R" in groups:
         print(f"\n=== R 组：旧报告提示词 vs 新报告提示词（n={args.n}）===")
         old_r = run_report_arm("旧", INPUTS, args.n, OLD_FEEDBACK_PROMPT,
                                report_history, feedback_tokens)
@@ -398,6 +419,11 @@ def main() -> int:
             print(f"  引用原话    {quote_rate:.0%}（要求 ≥ {MIN_QUOTE_RATE:.0%}）"
                   f"→ {'✅' if quote_rate >= MIN_QUOTE_RATE else '❌'}")
             print(f"  格式残留    {residue} 条 → {'✅' if residue == 0 else '❌'}")
+            # 空返回原来只是**打印**出来，不进判据 —— 于是"模型整条调不通、
+            # 30 次全返回兜底串"这种局面要看比例碰巧过没过线才知道。补齐。
+            if cand_empty > MAX_EMPTY_RATE_OLD:
+                failures.append(f"R：空返回 {cand_empty:.0%} 超过上限 "
+                                f"{MAX_EMPTY_RATE_OLD:.0%}（模型是不是没调通？）")
             if not ok_len:
                 failures.append("R：有报告超过 250 字")
             if quote_rate < MIN_QUOTE_RATE:
@@ -444,7 +470,8 @@ def main() -> int:
         for message in failures:
             print(f"   · {message}")
         return 1
-    print("✅ 全部达标签。可以进下一步：改端侧默认值 + 写文档 + 台账 §11.21。")
+    print(f"✅ 全部达标（跑了 {'、'.join(sorted(report))} 组，每组 n={args.n}）。"
+          f"改动提示词或题库规则之后，重跑一次这几组即可回归。")
     return 0
 
 

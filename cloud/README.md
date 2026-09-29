@@ -1,7 +1,7 @@
 # AI模拟面试官 — 云端服务
 
 > 负责：A同学  
-> 创建：2026-07-12 · 最近更新：2026-09-18（第二节目录结构、新增 3.5 题库检索、新增 5.5 校验脚本；3.3 补题库参考块注入）
+> 创建：2026-07-12 · 最近更新：2026-09-29（第二节目录结构、新增 3.7 会话落盘与报告导出、5.5 校验脚本补 `run_tests.sh`）
 
 ---
 
@@ -22,18 +22,28 @@ cloud/
 ├── session_manager.py      # 会话管理模块
 ├── question_bank.py        # 题库检索模块（纯标准库，见 3.5）
 ├── reply_guard.py          # 回复闸门：剥掉「判断：/理由：」这类元叙述（见 3.6）
+├── finish_guard.py         # 结束判据：候选人明说「结束吧」才提前收尾（见 3.7）
+├── score_guard.py          # 评分 JSON 校验（结构化评分用，纯函数）
+├── session_store.py        # 会话落盘：原子写、永不抛异常（见 3.7）
+├── report_export.py        # 报告导出：Markdown / JSON 渲染（见 3.7）
 ├── requirements.txt        # Python 依赖列表
 │
-├── static/index.html       # 对话展示页（只读，见 ../README.md 4.2.1）
+├── static/index.html       # 对话展示页 + 报告卡片（只读，见 ../README.md 4.2.1）
+├── data/sessions/          # 运行期落盘的会话 json（.gitignore，删掉不影响运行）
 │
 ├── test_services.py        # ASR/TTS 服务测试脚本（运行后在 cloud/ 下生成下面两个 wav）
 ├── play_tts.py             # TTS 语音播放工具
 ├── demo_interview.py       # 面试流程演示脚本
 │
-├── test_question_bank.py   # 校验①  题库模块单元测试（22 项，不花钱、不联网）
-├── test_reply_guard.py     # 校验②  回复闸门单元测试（22 项，不花钱、不联网）
-├── rehearsal.py            # 校验③  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
-├── ab_next_question.py     # 校验④  提示词改版的单变量 A/B（真打 LLM）
+├── test_question_bank.py   # 校验①②③ 各模块单元测试（纯标准库，不花钱、不联网）
+├── test_reply_guard.py
+├── test_finish_guard.py
+├── test_score_guard.py
+├── test_session_store.py
+├── test_report_export.py
+├── run_tests.sh            # 顺序跑上面全部单元测试（本地与 CI 共用；跳过 test_services.py）
+├── rehearsal.py            # 校验④  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
+├── ab_next_question.py     # 校验⑤  提示词改版的单变量 A/B（真打 LLM）
 │
 └── README.md               # 本文件
 ```
@@ -91,6 +101,8 @@ generate_feedback(role, history)          # 总结报告
 
 - ✅ 会话创建 / 复用、user 与 assistant 消息入历史、超时会话清理（默认 3600s）
 - ✅ 上下文由 `get_history()` 提供给 LLM，实现多轮追问
+- ✅ `snapshot()`：导出可直接 `jsonify` 的纯数据（落盘与网页展示都走它，见 3.7）。**只读，且刻意不往 `history` 的字典里加字段** —— 那份 history 会被原样送进 LLM 的 `messages` 参数
+- ✅ `finish()`：标记"这场结束了"。此前零调用者、`is_finished` 恒为 `False`，网页因此无从判断该不该渲染报告卡片（见 3.7）
 
 ### 3.5 题库检索 (`question_bank.py`)
 
@@ -124,6 +136,24 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 **为什么要在代码里补这一道**（台账 §11.20 / §11.21）：`next_question` 是语音链路，模型的每个字都会被 TTS 逐字念出来。提示词层面已经禁过一轮，但 9/18 的 A/B 证明**光靠提示词挡不住被污染的历史** —— 删掉提示词里的「错误示例」之后，模型改从历史里学那个格式，P 组 30 次里仍有 4 次输出 `判断：追问细节 … 理由：…`（169~229 字）。提示词是"劝"，闸门是"拦"。
 
 > 它**只用于问题链路**：报告走的是 `generate_feedback`，`strip_meta()` 会砍掉报告里的非问句段落，绝不能套用。
+
+### 3.7 会话落盘、语音结束、报告导出（2026-09 新增）
+
+大赛提交之后转入长期迭代做的第一批：**板子上的固件一行没改**，全部是云端增强，旧固件照样能用（响应体只增字段、只增值，`"continue"` / `"finish"` 两个值保持不变 —— 端侧 `next_action` 是 16 字节定长，且只在 `strcmp(next_action,"continue") != 0` 时清会话）。
+
+| 能力 | 文件 | 说明 |
+|---|---|---|
+| **会话落盘** | `session_store.py` | 每轮结束写一份 `data/sessions/<sid>.json`。原子写（临时文件 + `os.replace`），**`save()` 永不抛异常** —— 落盘失败只是少一份存档，绝不能把一次成功的面试变成 500。写盘位置在 TTS 之后，不拖慢板子正在等的那个回包 |
+| **重启存活** | `app.py` 的 `_snapshot()` | 取快照时**内存优先、磁盘兜底**，所以 `/api/history` 和 `/api/export` 在 Flask 重启后仍能取到上一场 |
+| **语音结束** | `finish_guard.py` | 候选人说「结束吧 / 谢谢老师，我没有其他问题了」时提前出报告。四道闸：归一化 → ≤20 字 → 无问号 → 剥掉首尾客套后核心命中白名单。**宁可漏判不可误判**：「没问题」「可以了」「就这样吧」故意不在白名单里（技术回答里太常见） |
+| **报告导出** | `report_export.py` + `GET /api/export/<sid>?format=md\|json` | Markdown 给人读、JSON 给以后做纵向分析。**文件名纯 ASCII**（中文标题写在正文里），避开 `Content-Disposition` 的非 ASCII 编码坑 |
+
+**顺带修掉的两个静默不一致**（都是"文档写死、实现却不是"）：
+
+1. **静音轮不再推迟报告**。空识别短路那句「抱歉，我没听清」原先会被 `add_ai_message` 写进历史，而它没有对应的 user 消息 → 历史变奇数 → 报告判据 `len(history) - 1 >= 20` 被推迟一次。现在它照常返回、照常有声，只是**不留痕**。回归判据在 `rehearsal.py --no-tts`：连打 3 轮静音后历史必须是 **0 条**。
+2. **`is_finished` 变真**。`session_manager.finish()` 此前零调用者，于是"这场结束了没有"在云端根本不存在，网页无从决定该不该渲染报告卡片。现在 `next_action != "continue"` 时调用它，判据与响应体里的 `type` 完全一致。
+
+> ⚠️ **`session_id` 现在是文件名**，所以 `session_store` 只接受 `^[A-Za-z0-9_-]{1,64}$`；不合规的 id 一律拒绝写入与读取（`../../etc/passwd` 这类在路由层就返回 404）。
 
 ---
 
@@ -214,20 +244,26 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 
 ---
 
-### 5.5 三个校验脚本（改提示词 / 改题库之后怎么验）
+### 5.5 校验脚本（改提示词 / 改题库之后怎么验）
 
 改动 `skills/*.json`、`question_bank.py` 的选题逻辑，或 `question_bank/data/` 之后，按这个顺序验：
 
 | # | 脚本 | 验什么 | 跑法 | 通过标准 | 花钱 |
 |---|------|--------|------|----------|------|
-| ① | `test_question_bank.py` | 题库模块本身：题数、白名单、缓存、16 线程并发、确定性、裁剪、避重复（22 项） | `python3 test_question_bank.py` | 22 项全过 | 否 |
-| ② | `test_reply_guard.py` | 回复闸门：真实脏输出能不能剥干净、干净文本是否零改动、幂等/确定性（22 项） | `python3 test_reply_guard.py` | 22 项全过 | 否 |
-| ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏 | 是 |
+| ① | `bash run_tests.sh` | 全部模块的单元测试（题库 / 回复闸门 / 结束判据 / 评分校验 / 落盘 / 导出） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
+| ② | `test_*.py` | 单独跑某一个（改哪个模块跑哪个） | `python3 test_finish_guard.py` | 全过 | 否 |
+| ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、`next_action`/`type` 逐轮对得上、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏、**无兜底文案**、导出接口 200 | 是 |
+| ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |
+| ③c | `rehearsal.py --no-tts` | 静音自检：空识别短路 + **历史奇偶性** | 同上 | 3 轮静音后历史 **0 条**、每轮都有短回复与音频 | 是 |
 | ④ | `ab_next_question.py` | 提示词改版的效果对照（旧版 vs 新版，**单变量**） | 先 `--dry-run` 人工审参考块，再 `--n 30` | 空返回 ≤1/30、平均字数 ≤ 旧版×1.2、Markdown 与编号残留 0、≥90% 以问号结尾；报告 ≤250 字且 ≥90% 含「」原话引用 | 是 |
 
-常用参数：`rehearsal.py --role "AI/ML Engineer"` 换岗位（走英文题库）、`--no-tts` 省一次合成；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
+常用参数：`rehearsal.py --role "AI/ML Engineer"` 换岗位（走英文题库）、`--rounds 3` 只跑 3 轮；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
 
-> ①② 是纯本地的，改完随手就能跑；③④ 会真打 API，通常只在**改提示词/改闸门/改选题逻辑**之后跑。④ 的 `--group` 支持只重测失败的那一臂（P 提示词 / B 题库 / R 报告）。
+> ①② 是纯本地的（**不需要 API key**），改完随手就能跑；③④ 会真打 API，通常只在**改提示词/改闸门/改选题逻辑**之后跑。④ 的 `--group` 支持只重测失败的那一臂（P 提示词 / B 题库 / R 报告）。
+>
+> `run_tests.sh` 会**跳过 `test_services.py`** —— 那是个真调 API、会生成 wav 的集成脚本，不是单元测试，混进 CI 会又花钱又不稳。
+>
+> **判据补强的两条经验**（2026-09）：`rehearsal.py` 原先只查"不该出现的痕迹"（泄漏串），于是**全链路失败时它依然是绿的** —— 模型调不通 → 各处 return 兜底串 → HTTP 200、结构完整、没有泄漏串，全部判据通过。现在它专门查一类 `FALLBACK_STRINGS`（"生成报告失败"等），**兜底文案出现就算不合格**。另一条：判据要跟着判据本身变 —— 报告轮现在由结束判据决定，"末轮必是报告"只在 `--rounds 11` 或 `--say-finish` 时成立，写死会变成假失败。
 
 > **11 轮是怎么来的**：端侧只发 `state="recording_finished"`（`start_interview` 在真实链路上不可达），结束判据是历史凑满 `HISTORY_FINISH_THRESHOLD = 20` 条，第 N 次调用时历史有 `2N-1` 条 —— 所以报告轮落在**第 11 次**调用，不是第 10 次。轮数对不上先看脚本 docstring 顶部那三条坑。
 >

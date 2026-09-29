@@ -7,6 +7,7 @@ import json
 import logging
 from openai import OpenAI
 
+from finish_guard import match_reason
 from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
 
@@ -166,8 +167,15 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
 
     system_prompt = skill["system_prompt"]
     if reference_block:
+        # 台账 §11.22 留了个悬案：「参考块到底注进去了没有」。它只改 system prompt，
+        # 不进 history、不在回复里留痕，所以事后从任何输出都反推不出来 —— 只能当场记。
+        # 一行日志换掉一类"面试变自由提问了却不知道从哪一轮开始"的排查。
+        logger.info(f"[题库] 本轮注入参考块：{len(reference_block)} 字"
+                    f"（轮次 {len(history) // 2}，检索词 {len(last_answer)} 字）")
         system_prompt = system_prompt.replace("{reference_block}", reference_block)
     else:
+        logger.info("[题库] 本轮无参考块（岗位未映射 / 题库缺失 / 候选人这轮说得太少）"
+                    "—— 退化为自由提问")
         # 空块要连占位符所在的那一行一起去掉，否则留下连续空行
         system_prompt = system_prompt.replace("{reference_block}\n\n", "")
         system_prompt = system_prompt.replace("{reference_block}", "")
@@ -318,6 +326,21 @@ def check_timeout(role: str, timeout_duration: int, partial_answer: str = "") ->
 # 兼容旧接口
 # ============================================================
 
+def _finish_requested(history: list) -> str:
+    """候选人这一轮的最后一句是不是在**请求结束面试**；返回命中的白名单词。
+
+    只看最后一条、且必须是 user 消息：本轮的候选人回答就是 `history[-1]`
+    （app.py 在调用前刚 add_user_message）。返回原因字符串而不是布尔值，
+    是为了让日志能说清"它到底匹配上了哪个词"—— 真误判时那是第一手信息。
+    """
+    if not history:
+        return ""
+    last = history[-1]
+    if not isinstance(last, dict) or last.get("role") != "user":
+        return ""
+    return match_reason(last.get("content", ""))
+
+
 def llm_interview(role: str, history: list, state: str, audio_base64: str = "") -> dict:
     """
     兼容旧版接口（已被 skill 函数替代）
@@ -340,7 +363,17 @@ def llm_interview(role: str, history: list, state: str, audio_base64: str = "") 
             # 死代码，结尾那段"最终评估"实际是 next_question 在长历史下即兴写的。
             # 结束判据本来就是云端算出来的（见 next_question），这里提前判一次即可，
             # 端侧协议（同回合、同 next_action=finish）完全不变。
-            if len(history) - 1 >= HISTORY_FINISH_THRESHOLD:
+            #
+            # 第二条结束路径：候选人**用嘴说**"结束吧"。在此之前只能按到第 11 轮，
+            # 想练 3 题就必须硬按 11 次 K1。判据在 finish_guard（纯函数、可单测），
+            # 这里只做 OR —— 刻意不放进 next_question：那边拿到的 history 比这里
+            # 少一条（不含本轮回答），放那儿就得再算一次下标，正是这类错位的高发地。
+            # 端侧协议零变化：next_action 本来就是 continue/finish 两个值。
+            finish_reason = _finish_requested(history)
+            if len(history) - 1 >= HISTORY_FINISH_THRESHOLD or finish_reason:
+                if finish_reason:
+                    logger.info(f"[结束] 候选人请求结束面试（命中 {finish_reason!r}，"
+                                f"实际轮次 {len(history) // 2}），提前生成报告")
                 return generate_feedback(role, history)
             return next_question(role, history[:-1], history[-1]["content"])
 
