@@ -1,20 +1,21 @@
 #!/bin/bash
 #
-# 提交前清洗 AI Coding 日志里的密钥
+# 提交前清洗仓库里的密钥
 #
-# 背景：logs/ 目录要随作品一起提交，而对话记录里难免出现 API key。
-# 一旦提交并推送，密钥就进了 git 历史 —— 之后删文件也删不掉，只能轮换。
-# 本项目的 MIMO_API_KEY 已经这样泄露过一次（commit 812a1b5）。
+# 背景：一旦提交并推送，密钥就进了 git 历史 —— 之后删文件也删不掉，只能轮换。
+# 本项目的 MIMO_API_KEY 就这样泄露过两次提交（812a1b5、f948ff7，涉及 cloud/ 下
+# 4 个文件），至今仍能在官方公开仓的那两个提交里读到。历史擦不掉，唯一的补救是轮换。
 #
-# 所以每次提交前跑一遍这个脚本。它按**特征**匹配，不依赖具体密钥值，
-# 因此换成新 key 也不用改脚本。
+# ⚠️ 扫描范围在 2026-09-29 从 logs/ 改成**全仓** —— 这个改动本身就是一次纠错：
+# 当年真正泄露的那次根本不在 logs/ 里，而在 cloud/ 的源码和文档里，只扫 logs 的
+# 旧版本当初就拦不住它。现在 logs/ 目录已经删掉了（比赛结束，见 .gitignore）。
 #
 # 用法：
-#   tools/redact_secrets.sh           清洗 logs/ 下所有 .jsonl
+#   tools/redact_secrets.sh           清洗（**就地修改**全仓被跟踪的文本文件）
 #   tools/redact_secrets.sh --check   只检查不修改；发现疑似密钥返回 1
 #
-# 注意：对话记录是**持续写入**的。清洗后如果继续对话，需要重新跑一遍。
-# 同理，若用组委会的工具重新导出日志，也要再清洗一次。
+# 它按**特征**匹配，不依赖具体密钥值，因此换成新 key 也不用改脚本。
+# 文件清单取自 `git ls-files`（即"会被提交的那些"），二进制文件由 grep -I 自动跳过。
 #
 set -u
 
@@ -29,8 +30,9 @@ PLACEHOLDER='<REDACTED-API-KEY>'
 mode="${1:-redact}"
 total=0
 
-while IFS= read -r f; do
-    n=$(grep -oE "$PATTERN" "$f" 2>/dev/null | wc -l)
+while IFS= read -r -d '' f; do
+    # grep -I：二进制文件直接跳过 —— 既避免误报，也避免下一步的 sed 改坏二进制
+    n=$(grep -oIE "$PATTERN" "$f" 2>/dev/null | wc -l)
     [ "$n" -eq 0 ] && continue
 
     total=$((total + n))
@@ -41,7 +43,7 @@ while IFS= read -r f; do
         sed -i -E "s/${PATTERN}/${PLACEHOLDER}/g" "$f"
         printf '  已清洗 %4d 处  %s\n' "$n" "$f"
     fi
-done < <(find logs -type f -name '*.jsonl' 2>/dev/null | sort)
+done < <(git ls-files -z 2>/dev/null)
 
 if [ "$mode" = "--check" ]; then
     if [ "$total" -gt 0 ]; then
@@ -49,13 +51,13 @@ if [ "$mode" = "--check" ]; then
         echo "发现 $total 处疑似密钥 —— 提交前请先运行： tools/redact_secrets.sh"
         exit 1
     fi
-    echo "logs/ 干净：没有发现疑似密钥"
+    echo "全仓干净：没有发现疑似密钥"
     exit 0
 fi
 
 if [ "$total" -eq 0 ]; then
-    echo "logs/ 干净：没有发现疑似密钥，无需修改"
+    echo "全仓干净：没有发现疑似密钥，无需修改"
 else
     echo
-    echo "共清洗 $total 处。如果本会话稍后还会继续，请在最终提交前再跑一次。"
+    echo "共清洗 $total 处。若是在日志/文档里，注意核对改完的语义是否还通顺。"
 fi
