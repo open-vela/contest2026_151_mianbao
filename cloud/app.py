@@ -240,6 +240,75 @@ def handle_interview():
         }), 500
 
 
+@app.route('/api/interview/text', methods=['POST'])
+def handle_interview_text():
+    """文字演练 —— **无硬件的降级通道**，不是正式使用方式。
+
+    三条刻意的边界：
+
+    * **新开端点，不复用 `/api/interview`**：板子那条链路的请求体与响应体有单测守着
+      （`test_scoring.py` 断言响应字段**恰好** 6 个），不该为了省几行代码去动它。
+    * **不打 TTS**：文字演练的全部意义就是跳过语音通路 —— 每轮省掉 2 次语音调用，
+      成本约为 PC 排练的 1/4。
+    * **它不该被当成产品**：面试练习的核心是"开口说"，文字版丢掉了语速、卡壳、
+      口头语这些真问题。所以页面上会写明"正式使用请对着板子说"。
+
+    两个动作：
+
+    | `state` | 做什么 |
+    |---|---|
+    | `"start"` | 创建会话，**让面试官先说第一句** —— 走 `start_interview`，那是设备链路上不可达（板子永远先录音）、专为"云端先开口"留的分支 |
+    | 其余（默认） | 提交一次文字回答，拿下一句追问或报告 |
+    """
+    data = request.get_json() or {}
+    role = data.get("role") or "AI 应用开发"
+    state = data.get("state") or "recording_finished"
+    answer = (data.get("text") or "").strip()
+    session_id = data.get("session_id") or ""
+
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    try:
+        session = session_manager.get_or_create_session(session_id, role)
+        # 已存在的会话**以它自己的岗位为准**：刷新页面之后客户端可能忘了当初选的是哪个，
+        # 而面试官人设、题库检索都跟着这个值走 —— 不能让客户端的一次疏忽把整场带偏。
+        role = session.role
+
+        if state == "start":
+            result = llm_interview(role, session.get_history(), "start")
+        else:
+            if not answer:
+                return jsonify({"error": "文本不能为空"}), 400
+            session.add_user_message(answer)
+            result = llm_interview(role, session.get_history(), state)
+
+        ai_text = result.get("text", "")
+        next_action = result.get("next_action", "continue")
+        session.add_ai_message(ai_text)
+
+        if next_action != "continue":
+            session.finish()
+            logger.info(f"[session={session_id}] 文字演练结束（{session.question_count} 轮）")
+
+        session_store.save(_snapshot(session_id))
+
+        # 与设备链路一致：报告轮之后在后台评分（**同样只发起、不等待**）
+        if next_action != "continue":
+            _start_scoring(session_id)
+
+        return jsonify({
+            "type": "question" if next_action == "continue" else "report",
+            "text": ai_text,
+            "session_id": session_id,
+            "next_action": next_action,
+        })
+    except Exception as error:
+        logger.error(f"文字演练出错: {error}", exc_info=True)
+        return jsonify({"error": f"服务器内部错误: {error}", "text": "",
+                        "session_id": session_id, "next_action": "continue"}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "ok", "message": "AI模拟面试官云端服务运行中"})
@@ -303,6 +372,16 @@ def history_page():
     与展示页**共用同一个 HTML 文件**（前端按 `location.pathname` 分支，见
     static/index.html 的"视图模式"一段）—— 列表与详情九成的样式和工具函数都一样，
     拆成两个文件迟早会出现两边不一致。
+    """
+    return app.send_static_file('index.html')
+
+
+@app.route('/text', methods=['GET'])
+def text_page():
+    """文字演练页（无硬件的降级通道）。
+
+    与前两个视图**共用同一个 HTML**（前端按 `location.pathname` 分支）——
+    消息渲染、报告卡片、评分区那几段完全一样，拆开只会让两边慢慢不一致。
     """
     return app.send_static_file('index.html')
 

@@ -286,6 +286,62 @@
     padding: 6px 9px;
   }
 
+  /* ---------- 文字演练（/text） ---------- */
+  /* 开场面板：选岗位 + 开始。 */
+  .starter {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px 24px;
+    max-width: 540px;
+    margin: 7vh auto 0;
+  }
+  .starter h2 { margin: 0 0 12px; font-size: 17px; }
+  /* 这段黄条是**刻意的**：文字演练不该被误当成正式用法 ——
+     面试练习的核心是开口说，打字丢掉了语速、卡壳、口头语。 */
+  .starter .warn {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--ink-dim);
+    background: #fff8e8;
+    border: 1px solid #f2e2c0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 0 0 18px;
+  }
+  .starter label { display: block; font-size: 13px; color: var(--ink-dim); margin-bottom: 18px; }
+  .starter select {
+    font: inherit; font-size: 14px; color: var(--ink); background: #fff;
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; margin-left: 8px;
+  }
+  /* 输入条：固定在底部。**只有文字演练才显示**（见脚本里的 startText/sendText）。 */
+  #composer {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: none;                      /* 显示由脚本控制：无会话/已结束时不显示 */
+    gap: 10px; align-items: flex-end;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, .95);
+    border-top: 1px solid var(--line);
+  }
+  #answerBox {
+    flex: 1;
+    font: inherit; font-size: 14px; line-height: 1.5;
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 9px 12px; resize: none; height: 44px; max-height: 150px;
+  }
+  #answerBox:focus { outline: none; border-color: var(--brand); }
+  #sendBtn {
+    font: inherit; font-size: 14px; color: #fff; background: var(--brand);
+    border: none; border-radius: 12px; padding: 12px 20px; cursor: pointer;
+    white-space: nowrap;
+  }
+  #sendBtn:disabled { opacity: .5; cursor: default; }
+  /* 有输入条时给消息区留出底部空间，否则最后一条会被压在输入条下面 */
+  body.text-mode #main { padding-bottom: 84px; }
+  /* 藏掉"有新消息"按钮：它固定在右下角，会和输入条的发送按钮叠在一起 */
+  body.text-mode #jump { display: none !important; }
+
   /* ---------- 回到底部 ---------- */
   #jump {
     position: fixed;
@@ -318,7 +374,9 @@
   <span class="badge" id="roundBadge" style="display:none"></span>
   <span class="badge ok" id="doneBadge" style="display:none">已结束</span>
   <span class="spacer"></span>
-  <!-- 历史入口。文字与 href 由脚本按当前视图改写（列表页要变成"← 当前面试"） -->
+  <!-- 两个入口。文字、href、显隐**都由脚本按当前视图改写**（见脚本"启动"一段）——
+       三个视图共用这一个头部，任何一处写死都会在另一个视图里露馅。 -->
+  <a class="hlink" id="textLink" href="/text">文字演练</a>
   <a class="hlink" id="histLink" href="/history">历史</a>
   <div class="status">
     <span class="dot" id="dot"></span>
@@ -349,6 +407,17 @@
   <div class="wrap" id="histWrap"></div>
 </main>
 
+<!-- 文字演练的开场面板（/text，还没开始时显示）：选岗位 → 开始。
+     与 #main 二选一显示 —— 开始之后它就让位给消息区。 -->
+<div class="wrap" id="starter" style="display:none"></div>
+
+<!-- 文字演练的输入条（/text，面试进行中显示）。固定底部，见 CSS。 -->
+<div id="composer">
+  <textarea id="answerBox" rows="1"
+            placeholder="在这里输入你的回答，Ctrl+Enter 发送"></textarea>
+  <button id="sendBtn">发送</button>
+</div>
+
 <button id="jump">有新消息 ↓</button>
 
 <script>
@@ -369,18 +438,25 @@
   var elHist     = document.getElementById("hist");
   var elHistWrap = document.getElementById("histWrap");
   var elHistLink = document.getElementById("histLink");
+  var elTextLink = document.getElementById("textLink");
+  var elStarter  = document.getElementById("starter");
+  var elComposer = document.getElementById("composer");
+  var elAnswerBox = document.getElementById("answerBox");
+  var elSendBtn  = document.getElementById("sendBtn");
 
   // ---------- 视图模式 ----------
   //
-  // 同一个 HTML 文件服务三个视图，靠**真实路径 + 查询串**区分：
+  // 同一个 HTML 文件服务四个视图，靠**真实路径 + 查询串**区分：
   //   /                  最近一场（默认，实时轮询）—— 公共设备的主路径：
   //                      面完走过来打开网页，看到的就是刚那一场
   //   /?session_id=xxx   指定某一场
   //   /history           历史列表
+  //   /text              文字演练（无硬件的降级通道，见 app.py 里那个端点的注释）
   //
   // 不用前端路由（hash）而用真实路径：URL 能直接收藏/分享，刷新后停在原处 ——
   // 对"贴在板子旁边的那张纸卡上的网址"来说，这点很重要。
   var IS_LIST = /^\/history\/?$/.test(location.pathname);
+  var IS_TEXT = /^\/text\/?$/.test(location.pathname);
   var SID = "";
   try { SID = new URLSearchParams(location.search).get("session_id") || ""; } catch (e) { SID = ""; }
 
@@ -501,6 +577,11 @@
 
   // 每次 render 都整块重建（幂等），与消息区的增量追加互不干扰。
   function renderReport(d) {
+    // 文字演练里，输入条的显隐跟着"这场结束没有"走 —— 出报告之后就没什么可答的了。
+    // 放在 renderReport 里而不是 render 里：它本来就在判断 is_finished。
+    if (IS_TEXT && SID) {
+      elComposer.style.display = d.is_finished ? "none" : "flex";
+    }
     if (!d.is_finished) {
       elReport.style.display = "none";
       elReport.innerHTML = "";
@@ -699,6 +780,88 @@
       .catch(function (e) { setStatus("err", "连接中断（" + e.message + "）"); });
   }
 
+  // ---------- 文字演练（/text） ----------
+  //
+  // 无硬件的降级通道：打字代替说话，**不走 TTS**（每轮省掉两次语音调用）。
+  // 每一步都落在与设备链路**同一个会话机制**上 —— 所以它产生的记录，在 /history
+  // 里和板子那几场并列，报告、评分、逐题复盘一模一样。
+
+  // 岗位清单：必须与题库里的 6 个岗位名**一字不差** —— 对不上时云端不报错，
+  // 只会静默退化成"没有参考题的自由提问"（见 cloud/question_bank.py 的别名表）。
+  var ROLES = ["AI 应用开发", "AI Agent 开发", "大模型算法工程师",
+               "AI/ML Engineer", "Data Scientist", "Data Analyst"];
+
+  var textRole = ROLES[0];
+  var starting = false;
+
+  function renderStarter() {
+    var opts = "";
+    for (var i = 0; i < ROLES.length; i++) {
+      opts += '<option value="' + esc(ROLES[i]) + '">' + esc(ROLES[i]) + "</option>";
+    }
+    elStarter.innerHTML =
+      '<div class="starter">' +
+        "<h2>文字演练</h2>" +
+        '<p class="warn">这是<b>无硬件的降级演练</b>：打字练不出语速、卡壳和口头语 ——' +
+          "正式使用请对着开发板说。</p>" +
+        '<label>面试岗位 <select id="roleSel">' + opts + "</select></label>" +
+        '<button class="btn" id="startBtn" ' +
+          'style="font-size:14px;padding:9px 18px">开始面试</button>' +
+      "</div>";
+    document.getElementById("startBtn").addEventListener("click", startText);
+  }
+
+  function textPost(payload) {
+    return fetch("/api/interview/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); });
+  }
+
+  function startText() {
+    if (starting) { return; }          // 防连点：点两下会开出两场会话
+    starting = true;
+    var sel = document.getElementById("roleSel");
+    textRole = sel ? sel.value : ROLES[0];
+    textPost({ role: textRole, state: "start" })
+      .then(function (d) {
+        if (!d.session_id) { throw new Error(d.error || "创建会话失败"); }
+        SID = d.session_id;
+        elStarter.style.display = "none";
+        elComposer.style.display = "flex";
+        // 会话写进地址栏：刷新还停在这一场（与另外两个视图同一个规矩）
+        history.replaceState(null, "", "/text?session_id=" + encodeURIComponent(SID));
+        tick();
+        elAnswerBox.focus();
+      })
+      .catch(function (e) { setStatus("err", e.message); })
+      .then(function () { starting = false; });
+  }
+
+  function sendText() {
+    var text = (elAnswerBox.value || "").trim();
+    if (!text || !SID || elSendBtn.disabled) { return; }
+    elSendBtn.disabled = true;
+    textPost({ session_id: SID, role: textRole, text: text })
+      .then(function (d) {
+        if (d.error) { throw new Error(d.error); }
+        elAnswerBox.value = "";
+        tick();                        // 立刻拉一次，不必等下一轮轮询
+      })
+      .catch(function (e) { setStatus("err", e.message); })
+      .then(function () { elSendBtn.disabled = false; elAnswerBox.focus(); });
+  }
+
+  // Ctrl/⌘+Enter 发送（与 myagent 的习惯一致）；单独 Enter 换行，不打字误发。
+  elAnswerBox.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      sendText();
+    }
+  });
+  elSendBtn.addEventListener("click", sendText);
+
   // ---------- 启动 ----------
 
   if (IS_LIST) {
@@ -712,6 +875,20 @@
     // 5 秒一次：别人刚面完，过来看列表的人应该能立刻看到它。
     // 一次请求只是一次目录扫描（见 session_store.list_summaries 的注释）。
     setInterval(loadList, 5000);
+  } else if (IS_TEXT) {
+    document.body.className = "text-mode";
+    elTextLink.textContent = "← 对话记录";
+    elTextLink.href = "/";
+    if (SID) {
+      // 刷新回来，或从历史里点进来：直接接着这一场说
+      elComposer.style.display = "flex";
+      tick();
+      setInterval(tick, POLL_MS);   // 评分是后台算的，得轮询才看得到它出现
+    } else {
+      elMain.style.display = "none";   // 还没开始：只显示开场面板
+      renderStarter();
+      elStarter.style.display = "";
+    }
   } else {
     elHistLink.textContent = SID ? "← 历史" : "历史";
     tick();

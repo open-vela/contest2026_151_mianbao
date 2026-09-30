@@ -29,6 +29,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # app.py 在导入期就要 key，所以这两行必须在 `import app` 之前。
 os.environ["MIMO_API_KEY"] = "dummy-key-for-tests-never-used"
@@ -313,6 +314,95 @@ class TestHistoryPage(RouteTestCase):
         page = listing.data.decode("utf-8")
         self.assertIn('id="hist"', page, "列表容器不在")
         self.assertIn('id="report"', page, "展示页的容器不在")
+
+
+class TestTextInterview(RouteTestCase):
+    """`POST /api/interview/text` —— 无硬件的降级通道。
+
+    ⚠️ 它**不许碰板子那条链路**：这里除了验新端点本身，还要再确认一次
+    `/api/interview` 的响应字段没被连累（那条守卫的主场在 test_scoring.py）。
+    """
+
+    def post_text(self, payload, reply="这是面试官说的话。", next_action="continue"):
+        with mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": reply, "next_action": next_action}) as llm, \
+             mock.patch.object(cloud_app, "_start_scoring") as scoring, \
+             mock.patch.object(cloud_app, "tts_text_to_audio") as tts:
+            response = cloud_app.app.test_client().post("/api/interview/text", json=payload)
+        return response, llm, scoring, tts
+
+    def test_start_creates_a_session_and_never_calls_tts(self):
+        response, llm, _, tts = self.post_text({"role": "AI 应用开发", "state": "start"})
+        self.assertEqual(response.status_code, 200)
+
+        body = response.get_json()
+        self.assertTrue(body["session_id"], "start 必须建出会话并把它还给客户端")
+        self.assertEqual(body["type"], "question")
+        self.assertEqual(llm.call_args.args[2], "start", "state 没传到 llm_interview")
+        self.assertEqual(tts.call_count, 0, "文字演练的全部意义就是不走语音通路")
+
+    def test_answer_then_history_has_both_sides(self):
+        started, _, _, _ = self.post_text({"role": "AI 应用开发", "state": "start"})
+        session_id = started.get_json()["session_id"]
+
+        response, _, _, _ = self.post_text(
+            {"session_id": session_id, "role": "AI 应用开发", "text": "我叫李浩。"})
+        self.assertEqual(response.status_code, 200)
+
+        history = self.client.get(f"/api/history?session_id={session_id}").get_json()
+        self.assertEqual([m["role"] for m in history["messages"]],
+                         ["assistant", "user", "assistant"])
+        self.assertEqual(history["messages"][1]["content"], "我叫李浩。")
+
+    def test_empty_answer_is_rejected(self):
+        started, _, _, _ = self.post_text({"role": "AI 应用开发", "state": "start"})
+        session_id = started.get_json()["session_id"]
+        for bad in ("", "   ", None):
+            with self.subTest(text=bad):
+                response, _, _, _ = self.post_text({"session_id": session_id, "text": bad})
+                self.assertEqual(response.status_code, 400)
+
+    def test_report_round_finishes_and_triggers_scoring(self):
+        started, _, _, _ = self.post_text({"role": "AI 应用开发", "state": "start"})
+        session_id = started.get_json()["session_id"]
+
+        response, _, scoring, _ = self.post_text(
+            {"session_id": session_id, "text": "结束吧。"}, next_action="finish")
+        self.assertEqual(response.get_json()["type"], "report")
+        self.assertEqual(scoring.call_count, 1, "报告轮要在后台发起评分（与设备链路一致）")
+
+        history = self.client.get(f"/api/history?session_id={session_id}").get_json()
+        self.assertTrue(history["is_finished"])
+
+    def test_no_scoring_before_the_report_round(self):
+        started, _, _, _ = self.post_text({"role": "AI 应用开发", "state": "start"})
+        session_id = started.get_json()["session_id"]
+        _, _, scoring, _ = self.post_text({"session_id": session_id, "text": "你好。"})
+        self.assertEqual(scoring.call_count, 0, "没结束就不该去评分（白花钱）")
+
+    def test_role_comes_from_the_session_not_the_client(self):
+        """刷新页面后客户端可能忘了当初选的岗位 —— 不能让它把整场带偏。"""
+        started, llm, _, _ = self.post_text({"role": "大模型算法工程师", "state": "start"})
+        session_id = started.get_json()["session_id"]
+
+        _, llm, _, _ = self.post_text({"session_id": session_id,
+                                       "role": "AI 应用开发",      # 客户端记错了
+                                       "text": "你好。"})
+        self.assertEqual(llm.call_args.args[0], "大模型算法工程师",
+                         "岗位该以会话里的为准")
+
+    def test_device_route_is_not_affected(self):
+        """新端点有没有连累板子那条链路 —— 那条约定的响应形状再确认一次。"""
+        with mock.patch.object(cloud_app, "asr_audio_to_text", return_value="候选人说的话"), \
+             mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "回复。", "next_action": "continue"}), \
+             mock.patch.object(cloud_app, "tts_text_to_audio", return_value="ZmFrZQ=="):
+            response = self.client.post("/api/interview", json={
+                "session_id": SID, "role": "AI 应用开发",
+                "state": "recording_finished", "audio": "ZmFrZQ=="})
+
+        self.assertEqual(set(response.get_json().keys()),
+                         {"type", "text", "tts_audio", "session_id", "next_action", "user_text"})
 
 
 if __name__ == "__main__":
