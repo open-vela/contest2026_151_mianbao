@@ -147,9 +147,19 @@ static void run_one_round(void)
 
     app_post_event(EVENT_RECORD_DONE);   /* RECORDING -> UPLOADING */
 
-    /* ---- 2. 上传（带重试）---- */
+    /* ---- 2. 上传（带重试）----
+     *
+     * ⚠️ 每一轮重试前后都要看 `g_abort`。上传本身是 libcurl 的**阻塞调用**、
+     * 中断不了，但"重试之间的等待"是可以中断的。原来这里完全不看，于是上传
+     * 期间按 K2 只是置了个标志，板子照样走完三次重试才进错误态 —— 日志嘴上说
+     * "取消当前一轮"，实际要再按一次 K2 才能回到待机（台账 §11.26 实测记过）。
+     */
     rc = CLOUD_ERR_HTTP;
     for (attempt = 1; attempt <= UPLOAD_MAX_RETRY; attempt++) {
+        if (g_abort) {
+            break;
+        }
+
         rc = upload_once(wav, wav_len, &resp);
         if (rc == CLOUD_OK) {
             break;
@@ -164,14 +174,34 @@ static void run_one_round(void)
 
         /* 间隔从 1 秒拉长到 3 秒：板子的 Wi-Fi 掉线后会重新做 WPA 握手，
          * 实测这个过程要几秒，1 秒的间隔等不到链路恢复，两次重试都会瞬间失败。
-         * 最后一轮失败就没必要再等了。 */
+         * 最后一轮失败就没必要再等了。
+         *
+         * 等待拆成 100ms 的小片而不是一次 `sleep(3)`：这样按 K2 能及时退出，
+         * 与录音/播放的取消粒度一致（都是 100ms 量级）。 */
         if (attempt < UPLOAD_MAX_RETRY) {
-            sleep(UPLOAD_RETRY_SEC);
+            int slice;
+
+            for (slice = 0; slice < UPLOAD_RETRY_SEC * 10; slice++) {
+                if (g_abort) {
+                    break;
+                }
+                usleep(100 * 1000);
+            }
         }
     }
 
     free(wav);
     wav = NULL;
+
+    /* 取消要**先于**失败判定：一次用户取消不该被记成一次故障，也就不该进错误态、
+     * 更不该把"云端多半缺 key"之类的提示打出来。判定顺序反了，日志里就会出现
+     * "按了取消、却报网络错误"这种自相矛盾的记录。 */
+    if (g_abort) {
+        printf("[Main] 本轮已被 K2 取消（上传阶段）\n");
+        cloud_response_free(&resp);
+        app_post_event(EVENT_ERROR);         /* UPLOADING --ERROR--> IDLE */
+        return;
+    }
 
     if (rc != CLOUD_OK) {
         cloud_response_free(&resp);
@@ -389,6 +419,21 @@ static void check_buttons(void)
 
 /* ---------- 入口 ---------- */
 
+/*
+ * 当前这个云端地址是从环境变量来的，还是编译期默认值？
+ *
+ * 这一行就是"`set CLOUD_URL` 到底生效没有"的**直接答案** —— 台账 §11.28 那次
+ * 悬案（从 9/18 挂到 9/30）之所以拖了那么久，就是因为唯一能回答它的那行打印
+ * 被串口吞了，最后只能靠阴性对照法绕出来。判据必须可靠，所以它由主线程打印。
+ */
+static const char *cloud_url_source(void)
+{
+    const char *env = getenv("CLOUD_URL");
+
+    return app_url_is_valid(env) ? "环境变量 CLOUD_URL（运行期覆盖生效）"
+                                 : "编译期默认值（CLOUD_URL 未设或不合法）";
+}
+
 int main(int argc, char *argv[])
 {
     pthread_t tid;
@@ -404,6 +449,11 @@ int main(int argc, char *argv[])
 
     state_machine_init();
     init_buttons();
+
+    /* 云端地址在**启动工作线程之前**打印：此刻主线程是唯一在写 stdout 的线程，
+     * 不会被踩掉（原因见 network_client.c 里 cloud_init 那段注释）。 */
+    printf("[Cloud] 云端地址: %s\n", app_cloud_base_url());
+    printf("[Cloud] 来源: %s\n", cloud_url_source());
 
     /* 流水线工作线程：栈必须够大，libcurl 要 200KB 量级。
      * 本函数内不得出现任何 curl 调用 —— 主任务栈放不下。 */
