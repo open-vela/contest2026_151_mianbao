@@ -26,6 +26,7 @@ cloud/
 ├── score_guard.py          # 评分 JSON 校验（结构化评分用，纯函数）
 ├── session_store.py        # 会话落盘：原子写、永不抛异常（见 3.7）
 ├── report_export.py        # 报告导出：Markdown / JSON 渲染（见 3.7）
+├── report_guard.py         # 报告闸门：报告里有没有「」原话引用（纯函数，见 3.8）
 ├── requirements.txt        # Python 依赖列表
 │
 ├── static/index.html       # 对话展示页 + 报告卡片（只读，见 ../README.md 4.2.1）
@@ -41,7 +42,9 @@ cloud/
 ├── test_score_guard.py
 ├── test_session_store.py
 ├── test_report_export.py
+├── test_report_guard.py    # 报告闸门单测（纯标准库）
 ├── test_routes.py          # HTTP 路由测试（需 Flask/openai；进程内 test client，不联网、不花钱）
+├── test_report_retry.py    # 报告缺「」引用时的兜底重试（call_llm 打桩，不联网、不花钱）
 ├── run_tests.sh            # 顺序跑上面全部测试（本地与 CI 共用；两档，见 5.5）
 ├── rehearsal.py            # 校验④  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
 ├── ab_next_question.py     # 校验⑤  提示词改版的单变量 A/B（真打 LLM）
@@ -158,6 +161,30 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 
 ---
 
+### 3.8 报告闸门 (`report_guard.py`，2026-09-30 新增)
+
+面试官**问题**那条链路的闸门是 `reply_guard`（剥掉元叙述）；这一节是**报告**那条链路的第一道闸，管的是另一件事：**报告里到底有没有引用候选人的原话**。
+
+**为什么需要它**：`skills/generate_feedback.json` 把"必须至少引用一处候选人的原话（用「」括起来）"写成了硬性要求，还特意注明"这一条没有例外"。但 2026-09-30 的真机实测证明**它在退化输入下会失效** —— 候选人三句只说了 6 / 2 / 5 个字，报告的四个维度全写「未涉及」，而「」引用一个也没有（台账 §11.27）。
+
+根因是**提示词自相矛盾**：它既要求"评价必须落到他实际说过的话上"，又要求没涉及的维度写「未涉及」—— 四个维度全「未涉及」时根本没有可落地的评价，模型于是把引用一起丢了。所以修法是两条腿：
+
+| 层 | 做什么 |
+|---|---|
+| **提示词** | 补一句专门覆盖退化情形：「即使四个维度全写「未涉及」，也照样要引用他仅有的那几句话里的一句」—— 把那个矛盾解开 |
+| **代码（本模块）** | 首轮出来先**查有没有「」引用**；没有就补一次纠偏重试（把原回复 + 一条 `RETRY_HINT` 一起发回去）。**只在缺的时候才多花一次调用**，正常轮次零成本 |
+
+**两个判据，一硬一软**：
+
+* `has_quote()` —— **硬判据**，决定要不要重试；
+* `check_quote_evidence()` —— **软判据**，查引用的话是不是真出自候选人。**只记日志、不拦**：提示词明确允许"摘不出完整句子就摘关键词连起来"，那是合法的**拼接**而非连续原文，拿它当拦截判据会大面积误报（同 `score_guard.evidence_supported` 的取舍）。
+
+**重试仍不合格怎么办**：**照发原文**，只记日志。宁可用一份缺引用的报告，也不要为了凑格式把已经生成好的内容丢掉、或机械拼一句引用上去 —— 报告本身是好的，缺的只是格式要求。
+
+> 单测分两处（判据不同，见 5.5 的分档）：`test_report_guard.py` 是纯标准库的模块单测；`test_report_retry.py` 把 `call_llm` 打桩、验的是**接线**（缺引用会不会重试、重试失败会不会照发），需要 `openai`，归"装依赖才跑"那一档。
+
+---
+
 ## 四、环境配置
 
 ### 4.1 Python 依赖
@@ -251,7 +278,7 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 
 | # | 脚本 | 验什么 | 跑法 | 通过标准 | 花钱 |
 |---|------|--------|------|----------|------|
-| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 评分校验 / 落盘 / 导出）+ **路由测试**（`test_routes.py`，验路由注册与内存/磁盘兜底的接线层） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
+| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 报告闸门 / 评分校验 / 落盘 / 导出）+ **需依赖的接线测试**（`test_routes.py` 验路由与内存/磁盘兜底、`test_report_retry.py` 验报告缺引用时的兜底重试） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
 | ② | `test_*.py` | 单独跑某一个（改哪个模块跑哪个） | `python3 test_finish_guard.py` | 全过 | 否 |
 | ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、`next_action`/`type` 逐轮对得上、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏、**无兜底文案**、导出接口 200 | 是 |
 | ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |
