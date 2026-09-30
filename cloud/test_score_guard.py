@@ -9,8 +9,11 @@ import unittest
 
 from score_guard import (
     DIMENSIONS,
+    EVIDENCE_MAX,
     MAX_SCORE,
     NOT_MENTIONED,
+    OPENING_QUESTION,
+    SUGGESTION_MAX,
     evidence_supported,
     extract_json,
     is_usable,
@@ -247,6 +250,63 @@ class TestEvidence(unittest.TestCase):
             prompt = json.load(fh)["system_prompt"]
         self.assertIn(f"就写「{NOT_MENTIONED}」", prompt,
                       f"提示词里要求写的占位符与 score_guard.{NOT_MENTIONED!r} 对不上了")
+
+
+class TestPerQuestion(unittest.TestCase):
+    """逐题复盘那一块的闸门。题号**范围**不在这里校验（闸门不知道这场有几题），
+    只管形状 —— 越界的由 `llm_service._attach_questions` 按实际题数丢掉。"""
+
+    def norm(self, per_question):
+        raw = dict(GOOD_RAW)
+        raw["per_question"] = per_question
+        return normalize(raw)["per_question"]
+
+    def test_missing_field_gives_empty_list_not_key_error(self):
+        """老会话、或者模型没给这栏 —— 消费方都得能打开（页面上那段就不渲染）。"""
+        raw = dict(GOOD_RAW)
+        raw.pop("per_question", None)
+        self.assertEqual(normalize(raw)["per_question"], [])
+
+    def test_keeps_valid_items_sorted_by_index(self):
+        got = self.norm([
+            {"index": 3, "evidence": "c", "suggestion": "s3"},
+            {"index": 1, "evidence": "a", "suggestion": "s1"},
+            {"index": 2, "evidence": "b", "suggestion": "s2"},
+        ])
+        self.assertEqual([q["index"] for q in got], [1, 2, 3])
+
+    def test_bad_indexes_are_dropped(self):
+        """含 `True` —— 布尔是 int 的子类，不特判就会变成"第 1 题"。"""
+        for bad in (0, -1, "2", 1.5, True, False, None):
+            with self.subTest(index=bad):
+                self.assertEqual(self.norm([{"index": bad, "suggestion": "x"}]), [])
+
+    def test_item_without_suggestion_is_dropped(self):
+        """只有题号和原话的条目，在页面上占一行却什么都不告诉用户。"""
+        self.assertEqual(self.norm([{"index": 1, "evidence": "他说的原话"}]), [])
+
+    def test_duplicate_index_keeps_the_first(self):
+        got = self.norm([{"index": 1, "suggestion": "第一条"},
+                         {"index": 1, "suggestion": "第二条"}])
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0]["suggestion"], "第一条")
+
+    def test_bad_shapes(self):
+        for bad in (None, [], "字符串", {"index": 1}, [None, 42, "x"]):
+            with self.subTest(per_question=bad):
+                self.assertEqual(self.norm(bad), [])
+
+    def test_long_text_is_clipped(self):
+        got = self.norm([{"index": 1,
+                          "suggestion": "很长的建议" * 40,
+                          "evidence": "很长的原话" * 40}])
+        self.assertLessEqual(len(got[0]["suggestion"]), SUGGESTION_MAX + 1)
+        self.assertLessEqual(len(got[0]["evidence"]), EVIDENCE_MAX + 1)
+
+    def test_opening_question_constant(self):
+        """第 1 题靠这句回填 —— 它不能是空的，也不能带换行（渲染时是一行标题）。"""
+        self.assertTrue(OPENING_QUESTION.strip())
+        self.assertNotIn("\n", OPENING_QUESTION)
 
 
 if __name__ == "__main__":

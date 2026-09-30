@@ -116,6 +116,22 @@ def to_markdown(snapshot) -> str:
         if score.get("summary"):
             lines += [f"**一句话总评**：{score['summary']}", ""]
 
+    # 逐题复盘：每题「问题 / 他的原话 / 更好的答法」。
+    # 这是这份报告里**最像"练习工具"**的一节 —— 总分和维度只说明现状，
+    # 这一节才告诉他下一遍该怎么答。
+    per_question = (score or {}).get("per_question") if isinstance(score, dict) else None
+    if per_question:
+        lines += ["## 逐题复盘", ""]
+        for item in per_question:
+            if not isinstance(item, dict):
+                continue
+            lines += [f"**第 {item.get('index', '?')} 题**：{item.get('question') or '（开场）'}", ""]
+            if item.get("evidence"):
+                lines.append(f"- 你的原话：{item['evidence']}")
+            if item.get("suggestion"):
+                lines.append(f"- 更好的答法：{item['suggestion']}")
+            lines.append("")
+
     messages = snapshot.get("messages") or []
     lines += ["## 对话记录", ""]
     if not messages:

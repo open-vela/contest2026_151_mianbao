@@ -192,5 +192,132 @@ class TestDeviceProtocolUnchanged(ScoringTestCase):
         self.assertEqual(scoring.call_count, 1, "报告轮必须发起一次评分")
 
 
+class TestQaPairs(unittest.TestCase):
+    """把对话历史配成编号问答 —— 逐题复盘的地基。"""
+
+    def test_first_question_is_the_backfilled_opening(self):
+        """⚠️ 设备上**并没有问过**第 1 题：候选人按 K1 直接开口，面试官才回应。
+        回填一句标准开场白，复盘才读得通（见 score_guard.OPENING_QUESTION）。"""
+        pairs = llm_service._qa_pairs([
+            {"role": "user", "content": "我叫李浩。"},
+            {"role": "assistant", "content": "能说说那个系统吗？"},
+            {"role": "user", "content": "是个客服知识库。"},
+        ])
+        self.assertEqual(len(pairs), 2)
+        self.assertEqual(pairs[0]["question"], score_guard.OPENING_QUESTION)
+        self.assertEqual(pairs[0]["answer"], "我叫李浩。")
+        self.assertEqual(pairs[1]["question"], "能说说那个系统吗？")
+        self.assertEqual(pairs[1]["answer"], "是个客服知识库。")
+
+    def test_report_is_never_used_as_a_question(self):
+        """报告是历史里最后一条 assistant 消息，但它不是"下一题"。"""
+        pairs = llm_service._qa_pairs([
+            {"role": "user", "content": "答案"},
+            {"role": "assistant", "content": "候选人整体表现不佳…"},   # 报告
+        ])
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["question"], score_guard.OPENING_QUESTION)
+
+    def test_ignores_malformed_and_empty(self):
+        pairs = llm_service._qa_pairs([None, 42, {"role": "user", "content": "   "},
+                                       {"role": "user", "content": "真的回答"}])
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["answer"], "真的回答")
+
+    def test_empty_or_bad_history(self):
+        for bad in (None, [], "字符串"):
+            with self.subTest(history=bad):
+                self.assertEqual(llm_service._qa_pairs(bad), [])
+
+    def test_block_contains_every_pair(self):
+        pairs = llm_service._qa_pairs([
+            {"role": "user", "content": "答案一"},
+            {"role": "assistant", "content": "第二题？"},
+            {"role": "user", "content": "答案二"},
+        ])
+        block = llm_service._qa_block(pairs)
+        for text in ("第 1 题", "第 2 题", "答案一", "答案二", "第二题？"):
+            self.assertIn(text, block)
+
+
+class TestAttachQuestions(unittest.TestCase):
+    def setUp(self):
+        self.pairs = [{"index": 1, "question": "开场", "answer": "a"},
+                      {"index": 2, "question": "第二题", "answer": "b"}]
+
+    def test_attaches_the_question_text(self):
+        got = llm_service._attach_questions(
+            [{"index": 2, "evidence": "e", "suggestion": "s"}], self.pairs)
+        self.assertEqual(got, [{"index": 2, "question": "第二题",
+                                "evidence": "e", "suggestion": "s"}])
+
+    def test_out_of_range_index_is_dropped(self):
+        """闸门不知道这场有几题，范围只能在这里卡。"""
+        self.assertEqual(
+            llm_service._attach_questions([{"index": 99, "suggestion": "s"}], self.pairs), [])
+
+    def test_bad_shapes(self):
+        for bad in (None, [], "x", [None, 42, "字符串"]):
+            with self.subTest(items=bad):
+                self.assertEqual(llm_service._attach_questions(bad, self.pairs), [])
+
+
+class TestScoreInterviewWithPerQuestion(ScoringTestCase):
+    """端到端（打桩）：`score_interview` 要把逐题复盘配好、挂上题目、丢掉越界的。"""
+
+    REPLY = json.dumps({
+        "dimensions": [{"name": n, "score": 7, "evidence": "混合召回", "comment": "还行"}
+                       for n in score_guard.DIMENSIONS],
+        "summary": "整体尚可。",
+        "per_question": [
+            {"index": 1, "evidence": "我叫李浩", "suggestion": "补一句最近做的事"},
+            {"index": 99, "evidence": "不存在", "suggestion": "越界，应被丢掉"},
+            {"index": 2, "evidence": "重复", "suggestion": "重复题号，只留第一条"},
+            {"index": 3, "evidence": "没给建议"},
+        ],
+    }, ensure_ascii=False)
+
+    def test_questions_are_attached_and_bad_ones_dropped(self):
+        with mock.patch.object(llm_service, "call_llm", return_value=self.REPLY) as patched:
+            score = llm_service.score_interview("AI 应用开发", list(HISTORY))
+
+        # HISTORY 里只有一条候选人发言 → 只有第 1 题；越界/重复/没建议的都该没了
+        self.assertEqual([q["index"] for q in score["per_question"]], [1])
+        # ⚠️ 这条 HISTORY 是**以面试官的话开头**的，所以配到的是那句真问题，
+        #    而不是回填的开场白（回填只用在"候选人先开口"那条路上，见下一个用例）
+        self.assertEqual(score["per_question"][0]["question"], "请介绍一下你自己。")
+        self.assertEqual(score["per_question"][0]["suggestion"], "补一句最近做的事")
+
+        # 喂给模型的是编号清单，而不是"整场对话原样"
+        sent = patched.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("第 1 题", sent)
+        self.assertIn("请介绍一下你自己。", sent)
+        self.assertIn("向量数据库", sent)
+
+    def test_opening_is_backfilled_when_the_candidate_spoke_first(self):
+        """真实端侧的流程：候选人按 K1 直接开口，面试官才回应 —— 第 1 题没有前置问题，
+        用回填的开场白补上（否则复盘第一行是空的）。"""
+        with mock.patch.object(llm_service, "call_llm", return_value=self.REPLY):
+            score = llm_service.score_interview(
+                "AI 应用开发", [{"role": "user", "content": "我叫李浩。"}])
+        self.assertEqual(score["per_question"][0]["question"], score_guard.OPENING_QUESTION)
+
+    def test_no_candidate_speech_means_no_call(self):
+        """历史里全是面试官的话（没有候选人发言）→ 没有可评的东西，别浪费一次调用。"""
+        with mock.patch.object(llm_service, "call_llm") as patched:
+            score = llm_service.score_interview(
+                "AI 应用开发", [{"role": "assistant", "content": "请介绍一下你自己。"}])
+        self.assertEqual(score, {})
+        self.assertEqual(patched.call_count, 0)
+
+    def test_report_is_not_fed_to_the_scorer(self):
+        """报告在历史末尾 —— 但它**不该进评分输入**：评的是问答，不是自己的结论。"""
+        with mock.patch.object(llm_service, "call_llm", return_value=self.REPLY) as patched:
+            llm_service.score_interview("AI 应用开发", list(HISTORY) + [
+                {"role": "assistant", "content": "这是报告正文，不该出现在评分输入里。"}])
+        sent = patched.call_args.kwargs["messages"][0]["content"]
+        self.assertNotIn("这是报告正文", sent)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
