@@ -264,6 +264,19 @@
   }
   .sess-new { font-size: 11.5px; color: #15803d; background: #e8f8ee;
               border-radius: 6px; padding: 1px 6px; }
+  /* 未结束的场次在列表里多一个「结束面试」按钮。
+     它是**列表项之外**的元素（挂在 .sess 旁边）—— 塞进 <a> 里既不合规，
+     点按钮也会连带触发跳转。 */
+  .sess-row { margin-bottom: 10px; }
+  .sess-row .sess { margin-bottom: 0; }
+  .sess-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+  .endbtn {
+    font: inherit; font-size: 12.5px; color: var(--ink-dim);
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    padding: 4px 12px; cursor: pointer;
+  }
+  .endbtn:hover { border-color: var(--brand); color: var(--brand); }
+  .endbtn:disabled { opacity: .5; cursor: default; }
 
   /* ---------- 逐题复盘（报告卡片里，默认折起来） ---------- */
   /* 为什么不默认展开：10 题展开会把卡片拉得很长，而"总分 + 四个维度"才是
@@ -381,6 +394,10 @@
   <span class="badge grey" id="roleBadge" style="display:none"></span>
   <span class="badge" id="roundBadge" style="display:none"></span>
   <span class="badge ok" id="doneBadge" style="display:none">已结束</span>
+  <!-- 详情页里的"继续对话"：这场没结束时才出现，把人带到文字演练去接着说。
+       为什么需要它：从 /history 点进来落到的是**只读**的详情页（没有输入框），
+       未结束的场次在这里就成了死路（2026-10-01 用户实测，台账 §11.39）。 -->
+  <a class="hlink" id="continueLink" href="#" style="display:none">继续对话</a>
   <span class="spacer"></span>
   <!-- 两个入口。文字、href、显隐**都由脚本按当前视图改写**（见脚本"启动"一段）——
        三个视图共用这一个头部，任何一处写死都会在另一个视图里露馅。 -->
@@ -451,6 +468,7 @@
   var elComposer = document.getElementById("composer");
   var elAnswerBox = document.getElementById("answerBox");
   var elSendBtn  = document.getElementById("sendBtn");
+  var elContinue = document.getElementById("continueLink");
 
   // ---------- 视图模式 ----------
   //
@@ -585,6 +603,14 @@
 
   // 每次 render 都整块重建（幂等），与消息区的增量追加互不干扰。
   function renderReport(d) {
+    // 未结束的场次：顶栏给一个「继续对话」入口。
+    // 为什么要有它：详情页是**只读**的（没有输入框），从 /history 点进来的未结束
+    // 场次在这里就成了死路 —— 只有从文字演练那侧进得去（用户 2026-10-01 实测）。
+    if (elContinue && d.session_id) {
+      elContinue.href = "/text?session_id=" + encodeURIComponent(d.session_id);
+      elContinue.style.display = d.is_finished ? "none" : "";
+    }
+
     // 文字演练里，输入条的显隐跟着"这场结束没有"走 —— 出报告之后就没什么可答的了。
     // 放在 renderReport 里而不是 render 里：它本来就在判断 is_finished。
     if (IS_TEXT && SID) {
@@ -677,7 +703,15 @@
 
   // ---------- 轮询 ----------
 
+  // 每次 tick 领一个序号：**只有最新那次的结果才允许落地**。
+  //
+  // 为什么需要：轮询（2 秒一次）与"发完消息立刻刷新"会并发。若旧的轮询响应后到，
+  // 它渲染的是旧状态 —— 新发的那条就"没显示"，要等下一轮才补上（用户实测遇到过：
+  // "发了一条消息却直接没显示"，2026-10-01）。
+  var tickSeq = 0;
+
   function tick() {
+    var seq = ++tickSeq;
     fetch("/api/history" + (SID ? "?session_id=" + encodeURIComponent(SID) : ""),
           { cache: "no-store" })
       .then(function (r) {
@@ -685,6 +719,7 @@
         return r.json();
       })
       .then(function (d) {
+        if (seq !== tickSeq) { return; }     // 旧的响应晚到了 —— 丢掉，别拿它覆盖新的
         setStatus("ok", "已连接");
 
         // 指纹：消息条数 + 最后一条内容 + 结束标志 + 评分状态，全没变就不重绘。
@@ -705,6 +740,7 @@
         render(d);
       })
       .catch(function (e) {
+        if (seq !== tickSeq) { return; }     // 同上：过期的失败不该覆盖当前状态
         setStatus("err", "连接中断（" + e.message + "）");
       });
   }
@@ -742,7 +778,18 @@
 
   // 一条场次记录（历史列表与文字演练的"未结束"列表共用）。
   // `base` 是点进去之后落到哪个视图：历史里落到 `/`，文字演练里落到 `/text`。
-  function sessItem(s, base) {
+  // `withEnd` 为真且这场没结束时，右边多一个「结束面试」按钮。
+  function sessItem(s, base, withEnd) {
+    var link = sessLink(s, base);
+    if (!withEnd || s.is_finished) { return link; }
+    return '<div class="sess-row">' + link +
+      '<div class="sess-actions">' +
+        '<button class="endbtn" data-sid="' + esc(s.session_id || "") +
+          '">结束面试</button>' +
+      "</div></div>";
+  }
+
+  function sessLink(s, base) {
     return '<a class="sess" href="' + base + "?session_id=" +
         esc(encodeURIComponent(s.session_id || "")) + '">' +
       '<div class="sess-top">' +
@@ -774,7 +821,7 @@
     }
     var html = "";
     for (var i = 0; i < items.length; i++) {
-      html += sessItem(items[i] || {}, "/");
+      html += sessItem(items[i] || {}, "/", true);
     }
     elHistWrap.innerHTML = html;
   }
@@ -824,7 +871,7 @@
       html += '<div class="resume"><h3>你有一场还没结束</h3>' +
               "<p>先打开它、说一句「结束吧」把它收尾，才能开始新的一场。</p>";
       for (i = 0; i < unfinished.length; i++) {
-        html += sessItem(unfinished[i], "/text");
+        html += sessItem(unfinished[i], "/text", true);
       }
       html += "</div>";
     }
@@ -875,6 +922,10 @@
         if (!d.session_id) { throw new Error(d.error || "创建会话失败"); }
         SID = d.session_id;
         elStarter.style.display = "none";
+        // ⚠️ 必须把消息区**恢复显示**：开场页那一步把它藏起来了（为了只显示开场面板），
+        // 忘了恢复的话，消息会照常渲染进一个看不见的容器 —— 表现为"开场白看不见，
+        // 退出重进才有"（2026-10-01 用户实测，台账 §11.39）。
+        elMain.style.display = "";
         elComposer.style.display = "flex";
         // 会话写进地址栏：刷新还停在这一场（与另外两个视图同一个规矩）
         history.replaceState(null, "", "/text?session_id=" + encodeURIComponent(SID));
@@ -916,6 +967,47 @@
     }
   });
   elSendBtn.addEventListener("click", sendText);
+
+  // ---------- 列表里的「结束面试」 ----------
+  //
+  // 效果与**在对话里输入"结束面试"完全相同** —— 走同一个端点、同一段判据
+  // （finish_guard 的白名单里本来就有"结束面试"）。所以那一轮照常留下记录、
+  // 照常出报告与评分，不是"从后台偷偷抹掉"。
+
+  function endSession(sessionId, btn) {
+    if (!sessionId) { return; }
+    if (btn) { btn.disabled = true; btn.textContent = "正在收尾…"; }
+    fetch("/api/interview/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, text: "结束面试" })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) { throw new Error(d.error); }
+        setStatus("ok", "已结束");
+        refreshCurrentView();
+      })
+      .catch(function (e) {
+        setStatus("err", e.message);
+        if (btn) { btn.disabled = false; btn.textContent = "结束面试"; }
+      });
+  }
+
+  function refreshCurrentView() {
+    if (IS_LIST) { loadList(); }
+    else if (IS_TEXT) { if (SID) { tick(); } else { loadStarter(); } }
+    else { loadStarter(); }
+  }
+
+  // 事件委托：这两处列表都是整块 innerHTML 重建的，逐个绑定会在每次刷新后失效。
+  function onEndClick(e) {
+    var btn = e.target && e.target.closest ? e.target.closest(".endbtn") : null;
+    if (!btn) { return; }
+    e.preventDefault();
+    endSession(btn.getAttribute("data-sid"), btn);
+  }
+  elHistWrap.addEventListener("click", onEndClick);
+  elStarter.addEventListener("click", onEndClick);
 
   // ---------- 启动 ----------
 
