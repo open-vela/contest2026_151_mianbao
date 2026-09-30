@@ -32,12 +32,12 @@ FINISHED = {
     "report": "建议把召回评估的细节补齐，整体基础扎实。",
     "score": {
         "dimensions": [
-            {"name": "表达与逻辑", "score": 8, "max": 10,
+            {"name": "技术正确性", "score": 8, "max": 10,
              "evidence": "我负责的是检索模块", "comment": "条理清晰"},
-            {"name": "专业深度", "score": 6, "max": 10,
+            {"name": "深度与原理", "score": 6, "max": 10,
              "evidence": "用的是 Faiss", "comment": "选型说得清，评估没展开"},
         ],
-        "missing": ["项目经验", "岗位匹配"],
+        "missing": ["工程与场景思考", "表达与结构"],
         "total": 70,
         "summary": "基础扎实，建议补齐评估细节。",
         "status": "ok",
@@ -79,9 +79,9 @@ class TestMarkdown(unittest.TestCase):
     def test_scores_are_rendered(self):
         md = to_markdown(FINISHED)
         self.assertIn("**总分：70 / 100**", md)
-        self.assertIn("| 表达与逻辑 | 8 / 10 | 条理清晰 |", md)
+        self.assertIn("| 技术正确性 | 8 / 10 | 条理清晰 |", md)
         self.assertIn("依据：我负责的是检索模块", md)
-        self.assertIn("本次未评的维度：项目经验、岗位匹配", md)
+        self.assertIn("本次未评的维度：工程与场景思考、表达与结构", md)
 
     def test_transcript_labels_both_speakers(self):
         md = to_markdown(FINISHED)

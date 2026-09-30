@@ -39,10 +39,10 @@ HISTORY = [
 # 一份闸门收拾得出来的模型输出（总分由 normalize 自己算：均值 7.0 → 70）
 GOOD_JSON = json.dumps({
     "dimensions": [
-        {"name": "表达与逻辑", "score": 8, "evidence": "召回率提升到 92%", "comment": "有数字"},
-        {"name": "专业深度", "score": 6, "evidence": "用向量数据库做检索", "comment": "点到为止"},
-        {"name": "项目经验", "score": 7, "evidence": "未提及", "comment": "说得少"},
-        {"name": "岗位匹配", "score": 7, "evidence": "未提及", "comment": "尚可"},
+        {"name": "技术正确性", "score": 8, "evidence": "召回率提升到 92%", "comment": "有数字"},
+        {"name": "深度与原理", "score": 6, "evidence": "用向量数据库做检索", "comment": "点到为止"},
+        {"name": "工程与场景思考", "score": 7, "evidence": "未提及", "comment": "说得少"},
+        {"name": "表达与结构", "score": 7, "evidence": "未提及", "comment": "尚可"},
     ],
     "summary": "整体尚可。",
     "total": 999,          # 模型自己算的，必须被丢掉
@@ -104,7 +104,7 @@ class TestScoreInterview(unittest.TestCase):
     def test_various_bad_outputs_return_empty(self):
         for bad in ("", "对不起我做不到", "{}", '{"dimensions": []}',
                     '{"dimensions": [{"name": "不认识的维度", "score": 5}]}',
-                    '{"dimensions": [{"name": "表达与逻辑", "score": "优秀"}]}'):
+                    '{"dimensions": [{"name": "技术正确性", "score": "优秀"}]}'):
             with self.subTest(reply=bad):
                 score, _ = self.call(bad)
                 self.assertEqual(score, {}, f"这份输出应当收拾不出来：{bad!r}")

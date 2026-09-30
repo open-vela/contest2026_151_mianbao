@@ -22,13 +22,13 @@ from score_guard import (
 # 但模型自己写的 total 是 999 —— normalize 必须丢掉它。
 GOOD_RAW = {
     "dimensions": [
-        {"name": "表达与逻辑", "score": 8, "evidence": "我负责的是检索模块",
+        {"name": "技术正确性", "score": 8, "evidence": "我负责的是检索模块",
          "comment": "先结论后细节，条理清晰"},
-        {"name": "专业深度", "score": 6, "evidence": "用的是 Faiss",
+        {"name": "深度与原理", "score": 6, "evidence": "用的是 Faiss",
          "comment": "能说清选型，但没展开召回评估"},
-        {"name": "项目经验", "score": 7, "evidence": "线上 QPS 大概两百",
+        {"name": "工程与场景思考", "score": 7, "evidence": "线上 QPS 大概两百",
          "comment": "有真实数据，规模偏小"},
-        {"name": "岗位匹配", "score": 7, "evidence": "我做的是 RAG 检索",
+        {"name": "表达与结构", "score": 7, "evidence": "我做的是 RAG 检索",
          "comment": "方向对口"},
     ],
     "total": 999,
@@ -96,41 +96,41 @@ class TestNormalize(unittest.TestCase):
 
     def test_score_is_clamped(self):
         raw = {"dimensions": [
-            {"name": "表达与逻辑", "score": 12},     # 越界上限
-            {"name": "专业深度", "score": -3},       # 越界下限
+            {"name": "技术正确性", "score": 12},     # 越界上限
+            {"name": "深度与原理", "score": -3},       # 越界下限
         ]}
         out = normalize(raw)
         self.assertEqual([d["score"] for d in out["dimensions"]], [MAX_SCORE, 0])
 
     def test_numeric_string_is_accepted(self):
-        raw = {"dimensions": [{"name": "表达与逻辑", "score": "7"}]}
+        raw = {"dimensions": [{"name": "技术正确性", "score": "7"}]}
         self.assertEqual(normalize(raw)["dimensions"][0]["score"], 7)
 
     def test_score_with_unit_suffix(self):
-        raw = {"dimensions": [{"name": "表达与逻辑", "score": "7分"}]}
+        raw = {"dimensions": [{"name": "技术正确性", "score": "7分"}]}
         self.assertEqual(normalize(raw)["dimensions"][0]["score"], 7)
 
     def test_boolean_score_is_dropped(self):
         """True 在 Python 里是 int 的子类 —— 不特判就会变成 1 分。"""
-        raw = {"dimensions": [{"name": "表达与逻辑", "score": True}]}
+        raw = {"dimensions": [{"name": "技术正确性", "score": True}]}
         self.assertEqual(normalize(raw), {})
 
     def test_non_numeric_score_is_dropped(self):
-        raw = {"dimensions": [{"name": "表达与逻辑", "score": "良好"}]}
+        raw = {"dimensions": [{"name": "技术正确性", "score": "良好"}]}
         self.assertEqual(normalize(raw), {})
 
     def test_unknown_dimension_is_dropped(self):
         raw = {"dimensions": [
             {"name": "颜值", "score": 10},
-            {"name": "表达与逻辑", "score": 8},
+            {"name": "技术正确性", "score": 8},
         ]}
         out = normalize(raw)
-        self.assertEqual([d["name"] for d in out["dimensions"]], ["表达与逻辑"])
+        self.assertEqual([d["name"] for d in out["dimensions"]], ["技术正确性"])
 
     def test_duplicate_dimension_keeps_first(self):
         raw = {"dimensions": [
-            {"name": "表达与逻辑", "score": 8},
-            {"name": "表达与逻辑", "score": 2},
+            {"name": "技术正确性", "score": 8},
+            {"name": "技术正确性", "score": 2},
         ]}
         out = normalize(raw)
         self.assertEqual(len(out["dimensions"]), 1)
@@ -139,26 +139,26 @@ class TestNormalize(unittest.TestCase):
     def test_missing_dimension_is_recorded_not_zeroed(self):
         """缺的维度如实记进 missing，**不补零** —— 补零等于凭空扣分。"""
         raw = {"dimensions": [
-            {"name": "表达与逻辑", "score": 8},
-            {"name": "专业深度", "score": 6},
-            {"name": "项目经验", "score": 7},
+            {"name": "技术正确性", "score": 8},
+            {"name": "深度与原理", "score": 6},
+            {"name": "工程与场景思考", "score": 7},
         ]}
         out = normalize(raw)
-        self.assertEqual(out["missing"], ["岗位匹配"])
+        self.assertEqual(out["missing"], ["表达与结构"])
         self.assertEqual(out["total"], 70)      # 只按已评的三维取均值
         self.assertEqual(len(out["dimensions"]), 3)
 
     def test_order_is_fixed_regardless_of_input(self):
         raw = {"dimensions": [
-            {"name": "岗位匹配", "score": 7},
-            {"name": "表达与逻辑", "score": 8},
+            {"name": "表达与结构", "score": 7},
+            {"name": "技术正确性", "score": 8},
         ]}
         out = normalize(raw)
         self.assertEqual([d["name"] for d in out["dimensions"]],
-                         ["表达与逻辑", "岗位匹配"])
+                         ["技术正确性", "表达与结构"])
 
     def test_long_text_is_truncated(self):
-        raw = {"dimensions": [{"name": "表达与逻辑", "score": 8,
+        raw = {"dimensions": [{"name": "技术正确性", "score": 8,
                                "comment": "很" * 500, "evidence": "细" * 500}],
                "summary": "总" * 500}
         out = normalize(raw)
@@ -169,7 +169,7 @@ class TestNormalize(unittest.TestCase):
     def test_bad_shapes(self):
         for bad in (None, "文字", 42, [], {}, {"dimensions": "不是列表"},
                     {"dimensions": []}, {"dimensions": [{}]},
-                    {"dimensions": [{"name": "表达与逻辑"}]}):
+                    {"dimensions": [{"name": "技术正确性"}]}):
             with self.subTest(raw=bad):
                 self.assertEqual(normalize(bad), {})
 
@@ -185,7 +185,7 @@ class TestIsUsable(unittest.TestCase):
 
     def test_rejects_out_of_range(self):
         self.assertFalse(is_usable({
-            "dimensions": [{"name": "表达与逻辑", "score": 99, "max": 10}],
+            "dimensions": [{"name": "技术正确性", "score": 99, "max": 10}],
             "total": 99,
         }))
 
@@ -216,10 +216,10 @@ class TestEvidence(unittest.TestCase):
     def test_verify_evidence_flags_fabricated_quote(self):
         """模型编的原话（历史里根本没有）要被点名 —— 这是复核的意义所在。"""
         raw = {"dimensions": [
-            {"name": "表达与逻辑", "score": 8, "evidence": "我负责的是检索模块"},
-            {"name": "专业深度", "score": 6, "evidence": "我调过 Milvus 的分片参数"},
+            {"name": "技术正确性", "score": 8, "evidence": "我负责的是检索模块"},
+            {"name": "深度与原理", "score": 6, "evidence": "我调过 Milvus 的分片参数"},
         ]}
-        self.assertEqual(verify_evidence(normalize(raw), HISTORY), ["专业深度"])
+        self.assertEqual(verify_evidence(normalize(raw), HISTORY), ["深度与原理"])
 
     def test_not_mentioned_is_not_a_fabrication(self):
         """⚠️ 写「未提及」的维度**不算编造**，必须跳过。
@@ -230,9 +230,9 @@ class TestEvidence(unittest.TestCase):
         才发现的（评分只在报告轮跑，而退化输入正是常见情形）。
         """
         raw = {"dimensions": [
-            {"name": "表达与逻辑", "score": 3, "evidence": NOT_MENTIONED},
-            {"name": "专业深度", "score": 3, "evidence": "未提及。"},   # 带标点也要认
-            {"name": "项目经验", "score": 3, "evidence": ""},           # 压根没给，也不点名
+            {"name": "技术正确性", "score": 3, "evidence": NOT_MENTIONED},
+            {"name": "深度与原理", "score": 3, "evidence": "未提及。"},   # 带标点也要认
+            {"name": "工程与场景思考", "score": 3, "evidence": ""},           # 压根没给，也不点名
         ]}
         self.assertEqual(verify_evidence(normalize(raw), HISTORY), [])
 
