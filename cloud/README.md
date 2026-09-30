@@ -23,7 +23,7 @@ cloud/
 ├── question_bank.py        # 题库检索模块（纯标准库，见 3.5）
 ├── reply_guard.py          # 回复闸门：剥掉「判断：/理由：」这类元叙述（见 3.6）
 ├── finish_guard.py         # 结束判据：候选人明说「结束吧」才提前收尾（见 3.7）
-├── score_guard.py          # 评分 JSON 校验（结构化评分用，纯函数）
+├── score_guard.py          # 结构化评分的闸门：抽 JSON、夹越界分、总分自己算（见 3.9）
 ├── session_store.py        # 会话落盘：原子写、永不抛异常（见 3.7）
 ├── report_export.py        # 报告导出：Markdown / JSON 渲染（见 3.7）
 ├── report_guard.py         # 报告闸门：报告里有没有「」原话引用（纯函数，见 3.8）
@@ -45,6 +45,7 @@ cloud/
 ├── test_report_guard.py    # 报告闸门单测（纯标准库）
 ├── test_routes.py          # HTTP 路由测试（需 Flask/openai；进程内 test client，不联网、不花钱）
 ├── test_report_retry.py    # 报告缺「」引用时的兜底重试（call_llm 打桩，不联网、不花钱）
+├── test_scoring.py         # P2 评分接线 + **端侧协议不变**（三个 service 全打桩，不花钱）
 ├── run_tests.sh            # 顺序跑上面全部测试（本地与 CI 共用；两档，见 5.5）
 ├── rehearsal.py            # 校验④  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
 ├── ab_next_question.py     # 校验⑤  提示词改版的单变量 A/B（真打 LLM）
@@ -185,6 +186,28 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 
 ---
 
+### 3.9 结构化评分 (`score_guard.py` + `skills/score_report.json`，2026-09-30 接线)
+
+报告是一段文字，而"哪一项弱、弱在哪句话上"要看分项。所以**报告轮之后另起一次 LLM 调用**，产出四维度评分（表达与逻辑 / 专业深度 / 项目经验 / 岗位匹配，各 0~10 + 一句依据），显示在网页的报告卡片里，也进 Markdown / JSON 导出。
+
+**三条纪律**（写在 `app.py` 的 `_start_scoring()` 注释里，每条都有代价换来的理由）：
+
+| 纪律 | 为什么 |
+|---|---|
+| **只"发起"不"等待"** | 评分要额外一次调用（实测十几秒），而板子正阻塞等这个回包。放在请求线程里就是把这十几秒加到板子头上 |
+| **绝不改端侧响应体** | 评分只进会话快照（网页 / 导出 / 落盘）。`/api/interview` 的字段**一个不多、一个不少** —— `test_scoring.py` 里有专门盯这条的用例 |
+| **失败只记日志** | 评分是锦上添花，不能影响一场已经完成的面试 |
+
+**闸门不信模型**（`score_guard.normalize()`）：分数越界**夹到边界**而不是丢弃、只认 `DIMENSIONS` 里那四个名字、**总分由代码算**（模型算不对算术）、漏掉的维度如实记进 `missing` 而不是补零（补零等于凭空扣分）。
+
+**维度只有一个来源**：`score_guard.DIMENSIONS`。提示词模板 `skills/score_report.json` 里写的是 `{dimensions}` 占位符，运行时注入 —— 这样就不会出现"提示词写了 5 个维度、代码只认 4 个"的漂移。**改维度要改代码，不是改那个 JSON。**
+
+**依据的核对是软的**：`verify_evidence()` 查每个维度的"依据"是不是真出自候选人，但**只记日志、不拦** —— 模型把原话压缩一两个字是常态（同 `report_guard.check_quote_evidence` 的取舍）。写 `NOT_MENTIONED`（未提及）的维度直接跳过：那是诚实的"没有依据"，不是编造。
+
+> 单测分两处：`test_score_guard.py` 是纯标准库的模块单测；`test_scoring.py` 把 LLM 与三个 service 全打桩，验的是**接线**与**端侧协议不变**，需要 Flask/openai，归"装依赖才跑"那一档（见 5.5）。
+
+---
+
 ## 四、环境配置
 
 ### 4.1 Python 依赖
@@ -278,7 +301,7 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 
 | # | 脚本 | 验什么 | 跑法 | 通过标准 | 花钱 |
 |---|------|--------|------|----------|------|
-| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 报告闸门 / 评分校验 / 落盘 / 导出）+ **需依赖的接线测试**（`test_routes.py` 验路由与内存/磁盘兜底、`test_report_retry.py` 验报告缺引用时的兜底重试） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
+| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 报告闸门 / 评分校验 / 落盘 / 导出）+ **需依赖的接线测试**（`test_routes.py` 验路由与内存/磁盘兜底、`test_report_retry.py` 验报告缺引用时的兜底重试、`test_scoring.py` 验 P2 评分接线与**端侧协议不变**） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
 | ② | `test_*.py` | 单独跑某一个（改哪个模块跑哪个） | `python3 test_finish_guard.py` | 全过 | 否 |
 | ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、`next_action`/`type` 逐轮对得上、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏、**无兜底文案**、导出接口 200 | 是 |
 | ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |

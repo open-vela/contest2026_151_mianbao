@@ -31,6 +31,10 @@ DIMENSIONS = ("表达与逻辑", "专业深度", "项目经验", "岗位匹配")
 # 单维度满分。用 0~10 的整数：模型对 10 分制最稳，而且前端画条形图够用。
 MAX_SCORE = 10
 
+# 「这个维度没有可引用的原话」的占位符（见 skills/score_report.json 的要求）。
+# `verify_evidence()` 要跳过它 —— 它是诚实的"没有依据"，不是编造的依据。
+NOT_MENTIONED = "未提及"
+
 # 各字段的长度上限 —— 这是**语音**产品，评分是给人看的短评，不是小作文。
 EVIDENCE_MAX = 60
 COMMENT_MAX = 80
@@ -234,12 +238,20 @@ def evidence_supported(quote, history) -> bool:
 
 
 def verify_evidence(score, history) -> list:
-    """逐维度核对证据，返回**没能对上原话**的维度名列表（对上则为空列表）。"""
+    """逐维度核对证据，返回**没能对上原话**的维度名列表（对上则为空列表）。
+
+    ⚠️ 写 `NOT_MENTIONED` 的维度**跳过不查** —— 那不是"编造的依据"，而是模型
+    诚实地说"这个维度没什么可引用的"。不跳过的话，一场候选人没怎么说话的面试
+    会在日志里刷出四个"对不上"，把真正的信号淹掉。
+    """
     bad = []
     for dim in (score or {}).get("dimensions", []) or []:
         if not isinstance(dim, dict):
             continue
-        if not evidence_supported(dim.get("evidence", ""), history):
+        evidence = dim.get("evidence", "")
+        if not evidence or _squash(evidence) == _squash(NOT_MENTIONED):
+            continue
+        if not evidence_supported(evidence, history):
             bad.append(dim.get("name", "?"))
     return bad
 

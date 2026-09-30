@@ -93,7 +93,7 @@ contest2026_151_mianbao/
 │   ├── import/                   #   从上游数据集与开源题库生成 data/ 的脚本
 │   ├── LICENSE                   #   MIT
 │   └── README.md                 #   ★ 题目来源、字段表、与上游差异、已知局限
-├── skills/                       # Prompt / Skill 定义（面试官人设、提问、点评）
+├── skills/                       # Prompt / Skill 定义（面试官人设、提问、点评、评分）
 ├── documents/                    # 设计文档与工作台账
 │   ├── progress_audit_2026-09-11.md   # ★ 工作台账：模块完成度、风险清单、每日进展、演示日手册
 │   ├── project_status.md              # 项目状态与硬件验证记录

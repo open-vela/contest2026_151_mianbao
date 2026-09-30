@@ -11,6 +11,7 @@ from finish_guard import match_reason
 from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
 import report_guard
+import score_guard
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,77 @@ def generate_feedback(role: str, history: list) -> dict:
         return {"text": result, "next_action": "finish"}
     else:
         return {"text": "生成报告失败", "next_action": "finish"}
+
+
+def _dimensions_block() -> str:
+    """把 `score_guard.DIMENSIONS` 拼成提示词里的维度清单。
+
+    维度**只有这一个来源**：提示词模板里不写死，就不会出现"提示词要 5 个维度、
+    代码只认 4 个"的漂移 —— 这正是 `score_guard` 把 DIMENSIONS 定成"唯一事实来源"
+    时留下的约定（见它的模块 docstring）。
+    """
+    return "\n".join(f"· {name}" for name in score_guard.DIMENSIONS)
+
+
+def score_interview(role: str, history: list) -> dict:
+    """给一场面试打结构化评分（P2）—— 独立的一次 LLM 调用。
+
+    ⚠️ 三个前提，调用方（app.py 的后台线程 `_start_scoring`）必须满足：
+
+    1. **只在报告轮之后调** —— 没结束的面试没有可评的东西；
+    2. **必须在端侧响应返回之后发起** —— 这一次调用要十几秒，放主线程就是把它
+       加到板子正阻塞等着的那段时间上；
+    3. **返回 `{}` 是正常结果**（模型抽不出 JSON、分数全越界、调用失败都一样），
+       调用方只记日志、不要当异常处理。
+
+    Returns:
+        `score_guard.normalize()` 收拾过的评分；任何失败都返回 `{}`。
+    """
+    skill = load_skill("score_report")
+    if not skill:
+        return {}
+
+    system_prompt = (skill["system_prompt"]
+                     .replace("{dimensions}", _dimensions_block())
+                     .replace("{role}", role))
+
+    conversation = "\n".join(
+        f"{'面试官' if m['role'] == 'assistant' else '候选人'}：{m['content']}"
+        for m in history
+    )
+    messages = [{"role": "user",
+                 "content": f"以下是完整面试对话：\n\n{conversation}\n\n请给出结构化评分。"}]
+
+    raw = call_llm(
+        system_prompt=system_prompt,
+        messages=messages,
+        temperature=skill.get("temperature", 0.3),
+        max_tokens=skill.get("max_tokens", 800)
+    )
+    if not raw:
+        logger.warning("[评分] LLM 返回为空")
+        return {}
+
+    parsed = score_guard.extract_json(raw)
+    if parsed is None:
+        logger.warning("[评分] 模型输出里抽不出 JSON：%r", raw[:120])
+        return {}
+
+    score = score_guard.normalize(parsed)
+    if not score_guard.is_usable(score):
+        logger.warning("[评分] 收拾不出可用的评分（原始 dimensions=%r）",
+                       str(parsed.get("dimensions"))[:120])
+        return {}
+
+    # 软核对：每个维度的"依据"是不是真出自候选人。**只记日志、不拦**（同
+    # report_guard 的取舍）—— 评分已经过闸门、结构可信，"未提及"这类诚实回答
+    # 由 verify_evidence 自己跳过；剩下来的措辞出入不值得丢掉整份评分。
+    unsupported = score_guard.verify_evidence(score, history)
+    if unsupported:
+        logger.info("[评分] %d 个维度的依据未能与候选人原话对上（仅供参考）：%s",
+                    len(unsupported), unsupported)
+
+    return score
 
 
 def check_timeout(role: str, timeout_duration: int, partial_answer: str = "") -> dict:

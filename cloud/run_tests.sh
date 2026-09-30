@@ -71,9 +71,11 @@ skipped=0
 for file in test_*.py; do
     case "$file" in
         test_services.py) continue ;;
-        test_routes.py|test_report_retry.py)
-            # 这两个都 import 了带第三方依赖的模块（test_routes 起 Flask app，
-            # test_report_retry 走 llm_service→openai），所以归同一档。
+        test_routes.py|test_report_retry.py|test_scoring.py)
+            # 这三个都 import 了带第三方依赖的模块（test_routes / test_scoring 起
+            # Flask app，test_report_retry 走 llm_service→openai），所以归同一档。
+            # 新增同类文件时**记得往这个模式里加** —— 漏了的话它会在没装依赖的
+            # 机器上直接报错，而不是被跳过。
             if [ "$have_deps" -eq 0 ]; then
                 echo "=== $file ==="
                 echo "⚠️  跳过：未装 Flask / openai。"
