@@ -278,6 +278,23 @@
   .endbtn:hover { border-color: var(--brand); color: var(--brand); }
   .endbtn:disabled { opacity: .5; cursor: default; }
 
+  /* ---------- 发送中的临时气泡 ---------- */
+  /* 面试官"正在思考"的三个点：让等待这件事**看得见**。
+     没有它的时候，用户看到的是"点了发送 → 半天不动 → 两条消息同时冒出来"，
+     不像对话、像提交表单（2026-10-01 用户提的）。 */
+  .typing { display: flex; gap: 4px; align-items: center; min-height: 24px; }
+  .typing i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ink-dim); opacity: .25;
+    animation: typing-blink 1.2s infinite ease-in-out;
+  }
+  .typing i:nth-child(2) { animation-delay: .2s; }
+  .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes typing-blink {
+    0%, 80%, 100% { opacity: .25; }
+    40%           { opacity: .9; }
+  }
+
   /* ---------- 逐题复盘（报告卡片里，默认折起来） ---------- */
   /* 为什么不默认展开：10 题展开会把卡片拉得很长，而"总分 + 四个维度"才是
      第一眼要看的；复盘是"我准备细看"时才展开的东西。
@@ -420,6 +437,11 @@
       </p>
     </div>
   </div>
+  <!-- 发送中的"临时气泡"：你先说的话 + 面试官正在思考。服务端数据一到就撤掉。
+       刻意放在 #wrap **外面**：消息区走的是增量追加（靠 renderedCount 记到哪了），
+       把一个"临时的、随时会消失的"元素混进去，会让计数和真实数据对不上。 -->
+  <div class="wrap" id="pending" style="display:none"></div>
+
   <!-- 报告卡片容器：面试结束后由 renderReport() 整块填充（见脚本注释） -->
   <div class="wrap" id="report"></div>
 </main>
@@ -469,6 +491,7 @@
   var elAnswerBox = document.getElementById("answerBox");
   var elSendBtn  = document.getElementById("sendBtn");
   var elContinue = document.getElementById("continueLink");
+  var elPending  = document.getElementById("pending");
 
   // ---------- 视图模式 ----------
   //
@@ -654,6 +677,10 @@
   }
 
   function render(d) {
+    // 服务端的数据到了 —— 先撤掉"临时气泡"，真消息紧接着在下面几行画出来。
+    // 同一帧内完成，所以看不出接缝（这是它敢放在 #wrap 外面的原因）。
+    hidePending();
+
     var msgs = d.messages || [];
 
     if (!msgs.length) { showEmpty(); return; }
@@ -839,6 +866,31 @@
       .catch(function (e) { setStatus("err", "连接中断（" + e.message + "）"); });
   }
 
+  // ---------- 发送中的"临时气泡" ----------
+  //
+  // 为什么要有它（2026-10-01 用户提的）：LLM 要一两秒才回，等它回来再一起渲染，
+  // 用户看到的是"点了发送 → 半天不动 → 两条消息同时冒出来"—— 不像对话，像提交表单。
+  // 现在换成大模型对话的样子：**先把他说的话画出来**，底下挂一个"面试官正在思考"的
+  // 省略号；服务端数据一到（render 的第一行）就整块撤掉，换成真消息。
+  function showPending(text) {
+    elPending.innerHTML =
+      (text ? makeRow({ role: "user", content: text }, true) : "") +
+      '<div class="row assistant">' +
+        '<div class="avatar">面</div>' +
+        '<div class="bubble-col"><div class="who">面试官</div>' +
+          '<div class="bubble typing"><i></i><i></i><i></i></div>' +
+        "</div>" +
+      "</div>";
+    elPending.style.display = "";
+    toBottom();
+  }
+
+  function hidePending() {
+    if (elPending.style.display === "none") { return; }
+    elPending.style.display = "none";
+    elPending.innerHTML = "";
+  }
+
   // ---------- 文字演练（/text） ----------
   //
   // 无硬件的降级通道：打字代替说话，**不走 TTS**（每轮省掉两次语音调用）。
@@ -913,6 +965,8 @@
     var btn = document.getElementById("startBtn");
     var sel = document.getElementById("roleSel");
     textRole = sel ? sel.value : ROLES[0];
+    // ⚠️ 这里**不用** showPending()：此刻消息区（#main）还是隐藏的（开场页状态），
+    //    气泡画出来也看不见。这一下的反馈靠按钮文字 + 状态栏那两条，够了。
     if (btn) { btn.disabled = true; btn.textContent = "正在准备…"; }
     // ⚠️ 即时反馈：这一下要等 LLM（一两秒）。不给任何反馈，用户的感觉就是"卡住了"
     //    —— 这是 2026-10-01 用户报的第一个问题，延迟本身是模型的，不是我们的。
@@ -944,14 +998,19 @@
     if (!text || !SID || elSendBtn.disabled) { return; }
     elSendBtn.disabled = true;
     elAnswerBox.disabled = true;
-    setStatus("ok", "面试官正在思考…");   // 同上：等待期间必须让用户看到"它在动"
+    setStatus("ok", "面试官正在思考…");   // 状态栏那条是给"看不见气泡"的时刻兜底的
+    showPending(text);                     // ★ 先把你说的那句话画出来 —— 别等
+    elAnswerBox.value = "";                // 输入框立刻清空，与"已经发出去了"一致
     textPost({ session_id: SID, role: textRole, text: text })
       .then(function (d) {
         if (d.error) { throw new Error(d.error); }
-        elAnswerBox.value = "";
-        tick();                        // 立刻拉一次，不必等下一轮轮询
+        tick();                        // 数据一到，render 第一行就把临时气泡换成真消息
       })
-      .catch(function (e) { setStatus("err", e.message); })
+      .catch(function (e) {
+        hidePending();                 // 发失败了，别把那条"假消息"留在屏幕上
+        elAnswerBox.value = text;      // 把你的话还回输入框 —— 不用重打
+        setStatus("err", e.message);
+      })
       .then(function () {
         elSendBtn.disabled = false;
         elAnswerBox.disabled = false;
