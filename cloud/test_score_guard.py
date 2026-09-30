@@ -10,6 +10,7 @@ import unittest
 from score_guard import (
     DIMENSIONS,
     MAX_SCORE,
+    NOT_MENTIONED,
     evidence_supported,
     extract_json,
     is_usable,
@@ -219,6 +220,33 @@ class TestEvidence(unittest.TestCase):
             {"name": "专业深度", "score": 6, "evidence": "我调过 Milvus 的分片参数"},
         ]}
         self.assertEqual(verify_evidence(normalize(raw), HISTORY), ["专业深度"])
+
+    def test_not_mentioned_is_not_a_fabrication(self):
+        """⚠️ 写「未提及」的维度**不算编造**，必须跳过。
+
+        提示词明确要求：某维度候选人完全没提到时，evidence 就写「未提及」
+        （见 skills/score_report.json）。不跳过的话，一场候选人没怎么说话的面试
+        会在日志里刷出四个"依据对不上"，把真正的信号淹掉 —— 这条是 P2 接线时
+        才发现的（评分只在报告轮跑，而退化输入正是常见情形）。
+        """
+        raw = {"dimensions": [
+            {"name": "表达与逻辑", "score": 3, "evidence": NOT_MENTIONED},
+            {"name": "专业深度", "score": 3, "evidence": "未提及。"},   # 带标点也要认
+            {"name": "项目经验", "score": 3, "evidence": ""},           # 压根没给，也不点名
+        ]}
+        self.assertEqual(verify_evidence(normalize(raw), HISTORY), [])
+
+    def test_not_mentioned_constant_matches_the_prompt(self):
+        """`NOT_MENTIONED` 与提示词里要求写的那句话必须一致 —— 改了这头忘了那头，
+        上面那条跳过就会静默失效（评分照跑，日志刷屏如故）。"""
+        import json
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "skills", "score_report.json")
+        with open(path, encoding="utf-8") as fh:
+            prompt = json.load(fh)["system_prompt"]
+        self.assertIn(f"就写「{NOT_MENTIONED}」", prompt,
+                      f"提示词里要求写的占位符与 score_guard.{NOT_MENTIONED!r} 对不上了")
 
 
 if __name__ == "__main__":

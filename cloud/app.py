@@ -4,9 +4,10 @@ AI模拟面试官 — 云端 Flask 服务
 from flask import Flask, request, jsonify, send_file
 import io
 import os
+import threading
 import uuid
 import logging
-from llm_service import llm_interview
+from llm_service import llm_interview, score_interview
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from session_manager import SessionManager
@@ -32,6 +33,47 @@ def _snapshot(session_id=None):
     if snap is not None:
         return snap
     return session_store.load(session_id) if session_id else session_store.load_latest()
+
+
+def _start_scoring(session_id):
+    """报告轮之后，**在后台线程里**跑结构化评分（P2）。
+
+    三条纪律，每条都有代价换来的理由：
+
+    * **只"发起"不"等待"** —— 评分是额外一次 LLM 调用（实测十几秒），而板子正
+      阻塞等这个回包。放在请求线程里就是把那十几秒加到板子头上，违反"云端处理
+      不能让端侧多等"这条底线。所以线程在这里起、响应紧接着返回。
+    * **绝不改端侧响应体** —— 评分只进会话快照（网页 / 导出 / 落盘），
+      `handle_interview` 里那段 jsonify 一个字段都不动。板子只解析 5 个字段、
+      缓冲 8MB，多塞东西没有半点好处。
+    * **失败只记日志** —— 评分是锦上添花，不能影响一场已经完成的面试。
+      整段包在 try 里，异常一律吞掉记 warning。
+
+    返回刚起的那个线程（调用方直接丢掉），**为的是让测试能 join 它** ——
+    否则"评分到底有没有写进会话"只能靠 sleep 去猜，那是最不可靠的一种测试。
+    """
+    def _work():
+        try:
+            session = session_manager.get_session(session_id)
+            if session is None:
+                return                      # 会话已被清理，那就算了
+            score = score_interview(session.role, list(session.history))
+            if not score:
+                logger.warning(f"[评分] session={session_id} 未拿到可用评分（跳过）")
+                return
+            session.score = score
+            # 落一份带评分的存档。session_store 的原子写**本来就是为"后台线程与
+            # 主线程先后写同一个文件"设计的**（见它的 docstring 第二条）。
+            session_store.save(session_manager.snapshot(session_id))
+            logger.info(f"[评分] session={session_id} 完成：总分 {score.get('total')}，"
+                        f"{len(score.get('dimensions', []))} 个维度")
+        except Exception as error:          # noqa: BLE001 —— 见上面第三条
+            logger.warning(f"[评分] session={session_id} 评分线程出错"
+                           f"（不影响这场面试）：{error}")
+
+    thread = threading.Thread(target=_work, name=f"score-{session_id[:8]}", daemon=True)
+    thread.start()
+    return thread
 
 # ---- 启动时校验 MIMO_API_KEY：空 key 直接拒绝启动 ----
 # 为什么要在**启动时**拦：asr/llm/tts 三个 service 都是在模块顶层 `os.environ.get("MIMO_API_KEY", "")`，
@@ -172,6 +214,11 @@ def handle_interview():
         #   * save() 自己吞掉所有异常（见 cloud/session_store.py），落盘失败只是
         #     少一份存档，绝不能把一次成功的面试变成 500。
         session_store.save(_snapshot(session_id))
+
+        # 报告轮：起一个后台线程去评分。**在 return 之前"发起"，但不在这里等** ——
+        # 线程已经跑起来，而响应马上返回，板子拿到的延迟与没有评分时完全一样。
+        if next_action != "continue":
+            _start_scoring(session_id)
 
         return jsonify({
             "type": "question" if next_action == "continue" else "report",

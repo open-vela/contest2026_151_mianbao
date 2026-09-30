@@ -14,6 +14,9 @@ class InterviewSession:
         self.updated_at = time.time()
         self.question_count = 0
         self.is_finished = False
+        # P2 的结构化评分。**默认 None**（未评分 / 评分失败 / 老数据）——
+        # 消费方（网页、导出）都必须能接受它不存在，见 snapshot() 的注释。
+        self.score = None
     def add_user_message(self, text: str):
         self.history.append({"role": "user", "content": text})
         self.updated_at = time.time()
@@ -82,6 +85,10 @@ class SessionManager:
             "role": session.role,
             "question_count": session.question_count,
             "is_finished": session.is_finished,
+            # P2 的评分由**后台线程**写入（见 app.py 的 _start_scoring），所以这里
+            # 读到的可能是旧值 —— 评分的消费者只有网页和导出，晚一拍无妨；
+            # 而它**绝不进端侧那条响应**（那边是 app.py 里单独 jsonify 的固定字段）。
+            "score": session.score,
             "created_at": session.created_at,
             "updated_at": session.updated_at,
             "messages": [{"role": m["role"], "content": m["content"]} for m in messages],

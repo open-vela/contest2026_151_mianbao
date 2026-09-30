@@ -8,7 +8,7 @@
 
 ## 一、概述
 
-本目录包含 AI 模拟面试官的 **5 个核心 Skills**，每个 Skill 对应面试流程中的一个环节。Skills 以 JSON 格式定义 Prompt 模板，由 `cloud/llm_service.py` 加载并调用小米 MIMO LLM API 执行。
+本目录包含 AI 模拟面试官的 **6 个核心 Skills**，每个 Skill 对应面试流程中的一个环节。Skills 以 JSON 格式定义 Prompt 模板，由 `cloud/llm_service.py` 加载并调用小米 MIMO LLM API 执行。
 
 ---
 
@@ -21,6 +21,17 @@
 | 3 | `evaluate_answer.json` | 对单个回答打分和点评 | 每个回答之后 | ⏳ 待优化 |
 | 4 | `generate_feedback.json` | 面试结束生成完整评估报告 | 面试结束 | ✅ 已完成（9/18 重写为四维度 + 引用原话，见 §3.4） |
 | 5 | `check_timeout.json` | 用户回答超时打断逻辑 | 录音超过3分钟未停止 | ✅ 已完成 |
+| 6 | `score_report.json` | 给一场面试打**结构化评分**（四维度 + 依据 + 总评） | 报告轮之后，由后台线程发起 | ✅ 已完成（2026-09-30，见 §3.6 与 cloud/README §3.9） |
+
+> ⚠️ **第 6 个与其余五个有三处不同**，改它之前先看一眼 cloud/README §3.9：
+>
+> 1. 它的产物**不会被念出来**（不走 TTS），只出现在网页与导出里 —— 所以不受
+>    "120 字以内""不要 Markdown"那类播报约束，但**必须输出纯 JSON**；
+> 2. 它的输出**不信模型**：分数越界会被夹、总分由 `score_guard` 自己算、不认识的
+>    维度直接丢（见 `cloud/score_guard.py`）；
+> 3. **维度不写死在这份 JSON 里**，而是由 `score_guard.DIMENSIONS` 在运行时注入
+>    `{dimensions}` —— 这样就不会出现"提示词写了 5 个维度、代码只认 4 个"的漂移。
+>    **改维度要改代码，不是改这个文件。**
 
 ---
 
