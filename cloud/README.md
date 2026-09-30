@@ -284,8 +284,9 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 | ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |
 | ③c | `rehearsal.py --no-tts` | 静音自检：空识别短路 + **历史奇偶性** | 同上 | 3 轮静音后历史 **0 条**、每轮都有短回复与音频 | 是 |
 | ④ | `ab_next_question.py` | 提示词改版的效果对照（旧版 vs 新版，**单变量**） | 先 `--dry-run` 人工审参考块，再 `--n 30` | 空返回 ≤1/30、平均字数 ≤ 旧版×1.2、Markdown 与编号残留 0、≥90% 以问号结尾；报告 ≤250 字且 ≥90% 含「」原话引用 | 是 |
+| ③d | `rehearsal.py --short-answers --say-finish --rounds 3` | **退化输入**：候选人几乎没说话时，报告里**还有没有「」原话引用**（台账 §11.27 那次就是在这条路上失效的） | 同上 | 第 3 轮 `type=report`、报告含「」引用、其余判据不退步 | 是 |
 
-常用参数：`rehearsal.py --role "AI/ML Engineer"` 换岗位（走英文题库）、`--rounds 3` 只跑 3 轮；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
+常用参数：`rehearsal.py --role "AI/ML Engineer"` 换岗位（走英文题库）、`--rounds 3` 只跑 3 轮、`--short-answers` 换成极短回答（配 `--say-finish --rounds 3` 最省，3 轮就出报告）；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
 
 > ①② 是纯本地的（**不需要 API key**），改完随手就能跑；③④ 会真打 API，通常只在**改提示词/改闸门/改选题逻辑**之后跑。④ 的 `--group` 支持只重测失败的那一臂（P 提示词 / B 题库 / R 报告）。
 >
