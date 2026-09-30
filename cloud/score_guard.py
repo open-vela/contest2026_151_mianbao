@@ -45,10 +45,21 @@ MAX_SCORE = 10
 # `verify_evidence()` 要跳过它 —— 它是诚实的"没有依据"，不是编造的依据。
 NOT_MENTIONED = "未提及"
 
+# 第 1 题**回填**的开场白。
+#
+# ⚠️ 这句在设备上**并没有真的被问出来** —— 我们的流程是候选人先开口（按 K1 直接
+# 开始说），面试官才回应。回填它是为了让逐题复盘读起来像一场完整的面试：
+# 候选人第一句通常就是自我介绍，配上这句开场白正好对得上。
+#
+# 真实数据可以佐证：候选人说"我叫李浩，本科学计算机…"时，面试官直接顺着追问了，
+# 全场根本没有"请介绍一下你自己"这句话（台账 §11.36）。
+OPENING_QUESTION = "你好，请先简单介绍一下你自己。"
+
 # 各字段的长度上限 —— 这是**语音**产品，评分是给人看的短评，不是小作文。
 EVIDENCE_MAX = 60
 COMMENT_MAX = 80
 SUMMARY_MAX = 160
+SUGGESTION_MAX = 80          # 逐题复盘的"更好的答法"，比维度评语再宽一点
 
 _FENCE_RE = re.compile(r"```[a-zA-Z]*\s*(.*?)```", re.DOTALL)
 
@@ -152,6 +163,41 @@ def _as_score(value):
     return int(max(0, min(MAX_SCORE, round(value))))
 
 
+def _normalize_per_question(raw) -> list:
+    """收拾 `per_question`（逐题复盘）：题号要是正整数、建议要有、坏条目丢掉。
+
+    **题号的范围不在这里校验** —— 闸门不知道这场有几题。越界的题号由调用方
+    （`llm_service.score_interview`）按实际题数丢掉，那里才知道题目文本。
+
+    为什么"没有建议就丢掉"：这一项存在的全部意义就是那句建议；只有题号和
+    原话的条目，在页面上占一行却什么都不告诉用户。
+    """
+    if not isinstance(raw, list):
+        return []
+    out = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        # 布尔是 int 的子类，不特判的话 True 会变成"第 1 题"
+        if isinstance(index, bool) or not isinstance(index, int) or index < 1:
+            continue
+        if index in seen:
+            continue                      # 同一题给了多条 —— 留第一条
+        suggestion = _clean_str(item.get("suggestion"), SUGGESTION_MAX)
+        if not suggestion:
+            continue
+        seen.add(index)
+        out.append({
+            "index": index,
+            "evidence": _clean_str(item.get("evidence"), EVIDENCE_MAX),
+            "suggestion": suggestion,
+        })
+    out.sort(key=lambda q: q["index"])
+    return out
+
+
 def normalize(raw):
     """把模型给的原始结构收拾成规范评分；无法收拾时返回 `{}`。
 
@@ -161,6 +207,7 @@ def normalize(raw):
          "missing":    ["工程与场景思考", ...],   # 模型漏掉的维度，如实记录
          "total":      75,                    # 0~100，**我们算的**
          "summary":    "一句话总评",
+         "per_question": [{"index", "evidence", "suggestion"}, ...],   # 可为空
          "status":     "ok"}
 
     刻意**丢掉**模型自己算的 total：它算不对，而总分是给人看的第一眼数字，
@@ -205,6 +252,9 @@ def normalize(raw):
         "missing": [d for d in DIMENSIONS if d not in seen],
         "total": round(sum(d["score"] for d in dims) / len(dims) * 10),
         "summary": _clean_str(raw.get("summary"), SUMMARY_MAX),
+        # 逐题复盘。**可能是空列表**（模型没给、或全被丢掉）—— 消费方都要能接受
+        # 它为空（页面上那段就不渲染），这是老会话（没有这个字段）也能打开的前提。
+        "per_question": _normalize_per_question(raw.get("per_question")),
         "status": "ok",
     }
 

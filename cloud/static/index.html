@@ -265,6 +265,27 @@
   .sess-new { font-size: 11.5px; color: #15803d; background: #e8f8ee;
               border-radius: 6px; padding: 1px 6px; }
 
+  /* ---------- 逐题复盘（报告卡片里，默认折起来） ---------- */
+  /* 为什么不默认展开：10 题展开会把卡片拉得很长，而"总分 + 四个维度"才是
+     第一眼要看的；复盘是"我准备细看"时才展开的东西。
+     用原生 <details> —— 不需要一行 JS，也不会和卡片"整块重建"的渲染方式打架。 */
+  .pq { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .pq > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--brand); }
+  .pq[open] > summary { margin-bottom: 8px; }
+  .pq-item { padding: 9px 0; border-top: 1px dashed var(--line); }
+  .pq-item:first-of-type { border-top: none; padding-top: 2px; }
+  .pq-q { font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
+  .pq-ev { font-size: 13px; margin-top: 5px; line-height: 1.5; }
+  /* 建议是这一节里唯一"能带走"的东西，给它一点底色把它托出来 */
+  .pq-sug {
+    font-size: 13px;
+    margin-top: 5px;
+    line-height: 1.5;
+    background: var(--brand-dim);
+    border-radius: 8px;
+    padding: 6px 9px;
+  }
+
   /* ---------- 回到底部 ---------- */
   #jump {
     position: fixed;
@@ -453,6 +474,26 @@
       }
       if (s.summary) { html += '<div class="summary">' + fmt(s.summary) + '</div>'; }
       html += '</div>';
+    }
+
+    // 逐题复盘：每题「问题 / 他的原话 / 更好的答法」，默认折起来（见 CSS 注释）。
+    // 这是卡片里唯一"告诉他下一遍怎么答"的部分 —— 总分说明现状，这节才给方向。
+    var pq = s && s.per_question;
+    if (pq && pq.length) {
+      html += '<details class="pq"><summary>逐题复盘（' + pq.length + ' 题）</summary>';
+      for (var j = 0; j < pq.length; j++) {
+        var q = pq[j] || {};
+        html +=
+          '<div class="pq-item">' +
+            '<div class="pq-q">第 ' + esc(q.index) + ' 题 · ' +
+              esc(q.question || "（开场）") + '</div>' +
+            (q.evidence
+               ? '<div class="pq-ev">你的原话：' + esc(q.evidence) + '</div>' : "") +
+            (q.suggestion
+               ? '<div class="pq-sug">更好的答法：' + esc(q.suggestion) + '</div>' : "") +
+          '</div>';
+      }
+      html += '</details>';
     }
 
     return html + '</div>';

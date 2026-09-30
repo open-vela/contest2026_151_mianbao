@@ -337,6 +337,69 @@ def _dimensions_block() -> str:
     return "\n".join(f"· {name}" for name in score_guard.DIMENSIONS)
 
 
+def _qa_pairs(history) -> list:
+    """把对话历史配成「面试官问的 / 候选人答的」若干题。
+
+    **为什么配对在代码里做、不交给模型**：题目文本我们本来就有，让模型再吐一遍只会
+    多一个出错的地方（可能改写、可能编造）。模型只负责判断，题号是它唯一的"指路牌"。
+
+    第 1 题是特例，**设备上并没有问过它** —— 我们的流程是候选人按 K1 直接开口，
+    面试官才回应。这里用 `score_guard.OPENING_QUESTION` **回填**一句标准开场白，
+    让复盘读起来像一场完整的面试（候选人第一句通常就是自我介绍）。
+    """
+    pairs = []
+    last_question = score_guard.OPENING_QUESTION
+    for message in history or []:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = (message.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "assistant":
+            last_question = content        # 面试官这句是"下一题"
+        elif role == "user":
+            pairs.append({"index": len(pairs) + 1,
+                          "question": last_question,
+                          "answer": content})
+    return pairs
+
+
+def _qa_block(pairs) -> str:
+    """把配好的问答排成给模型看的编号清单。"""
+    lines = []
+    for pair in pairs:
+        lines.append(f"第 {pair['index']} 题")
+        lines.append(f"面试官：{pair['question']}")
+        lines.append(f"候选人：{pair['answer']}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _attach_questions(items, pairs) -> list:
+    """按题号把题目文本挂到逐题复盘上；**越界的题号丢掉**。
+
+    范围校验只能在这里做 —— 闸门（`score_guard`）是纯函数，它不知道这场有几题。
+    """
+    by_index = {pair["index"]: pair for pair in pairs}
+    out = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue                       # 闸门已经滤过一道，这里再兜一次
+        pair = by_index.get(item.get("index"))
+        if pair is None:
+            logger.info("[评分] 逐题复盘里出现越界题号 %r（本场共 %d 题），已丢弃",
+                        item.get("index"), len(pairs))
+            continue
+        out.append({
+            "index": pair["index"],
+            "question": pair["question"],
+            "evidence": item.get("evidence", ""),
+            "suggestion": item.get("suggestion", ""),
+        })
+    return out
+
+
 def score_interview(role: str, history: list) -> dict:
     """给一场面试打结构化评分（P2）—— 独立的一次 LLM 调用。
 
@@ -359,12 +422,19 @@ def score_interview(role: str, history: list) -> dict:
                      .replace("{dimensions}", _dimensions_block())
                      .replace("{role}", role))
 
-    conversation = "\n".join(
-        f"{'面试官' if m['role'] == 'assistant' else '候选人'}：{m['content']}"
-        for m in history
-    )
+    pairs = _qa_pairs(history)
+    if not pairs:
+        logger.warning("[评分] 这场没有可评的问答（历史里没有候选人发言）")
+        return {}
+
+    # ⚠️ 输入是**编号问答列表**，不是"整场对话原样丢进去"。两处好处：
+    #   1. 模型回 per_question 时用题号指代，不会认错题；
+    #   2. **把报告本身排除在评分输入之外** —— 报告在历史末尾，原样丢进去等于让
+    #      评分看着自己的结论打分（锚定），评的该是问答、不是结论。
     messages = [{"role": "user",
-                 "content": f"以下是完整面试对话：\n\n{conversation}\n\n请给出结构化评分。"}]
+                 "content": f"以下是这场面试的问答记录（共 {len(pairs)} 题）：\n\n"
+                            f"{_qa_block(pairs)}\n\n"
+                            f"请给出结构化评分与逐题复盘。"}]
 
     raw = call_llm(
         system_prompt=system_prompt,
@@ -394,6 +464,12 @@ def score_interview(role: str, history: list) -> dict:
     if unsupported:
         logger.info("[评分] %d 个维度的依据未能与候选人原话对上（仅供参考）：%s",
                     len(unsupported), unsupported)
+
+    # 逐题复盘：按题号把题目文本挂上去（越界题号在这里丢掉，闸门不知道有几题）
+    score["per_question"] = _attach_questions(score.get("per_question"), pairs)
+    if len(score["per_question"]) != len(pairs):
+        logger.info("[评分] 逐题复盘覆盖 %d/%d 题",
+                    len(score["per_question"]), len(pairs))
 
     return score
 

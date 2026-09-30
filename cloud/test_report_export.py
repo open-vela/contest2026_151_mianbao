@@ -40,6 +40,12 @@ FINISHED = {
         "missing": ["工程与场景思考", "表达与结构"],
         "total": 70,
         "summary": "基础扎实，建议补齐评估细节。",
+        "per_question": [
+            {"index": 1, "question": "你好，请先简单介绍一下你自己。",
+             "evidence": "我负责的是检索模块", "suggestion": "开头先点明岗位方向，再展开项目"},
+            {"index": 2, "question": "召回是怎么评估的？",
+             "evidence": "用的是 Faiss", "suggestion": "把评测集怎么建的、指标是多少补上"},
+        ],
         "status": "ok",
     },
 }
@@ -82,6 +88,33 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("| 技术正确性 | 8 / 10 | 条理清晰 |", md)
         self.assertIn("依据：我负责的是检索模块", md)
         self.assertIn("本次未评的维度：工程与场景思考、表达与结构", md)
+
+    def test_per_question_review_is_rendered(self):
+        """逐题复盘是这份报告里**最像"练习工具"**的一节 —— 总分说明现状，
+        这一节才告诉他下一遍该怎么答。"""
+        md = to_markdown(FINISHED)
+        self.assertIn("## 逐题复盘", md)
+        self.assertIn("**第 1 题**：你好，请先简单介绍一下你自己。", md)
+        self.assertIn("**第 2 题**：召回是怎么评估的？", md)
+        self.assertIn("- 你的原话：我负责的是检索模块", md)
+        self.assertIn("- 更好的答法：开头先点明岗位方向，再展开项目", md)
+
+    def test_no_per_question_section_when_absent(self):
+        """老会话没有这个字段 —— 那一节就不该出现，而不是印一个空标题。"""
+        snapshot = dict(FINISHED)
+        snapshot["score"] = {k: v for k, v in FINISHED["score"].items()
+                             if k != "per_question"}
+        self.assertNotIn("## 逐题复盘", to_markdown(snapshot))
+
+    def test_per_question_tolerates_missing_question_text(self):
+        """题目文本缺了也不该崩 —— 退化成「（开场）」比让整份导出失败好。"""
+        snapshot = dict(FINISHED)
+        snapshot["score"] = dict(FINISHED["score"], per_question=[
+            {"index": 1, "suggestion": "建议一"},
+        ])
+        md = to_markdown(snapshot)
+        self.assertIn("**第 1 题**：（开场）", md)
+        self.assertIn("- 更好的答法：建议一", md)
 
     def test_transcript_labels_both_speakers(self):
         md = to_markdown(FINISHED)
