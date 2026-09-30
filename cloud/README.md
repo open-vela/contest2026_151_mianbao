@@ -15,8 +15,9 @@
 
 ```
 cloud/
-├── app.py                  # Flask 主程序（云端 API 入口：/api/interview、/api/health、
-│                           #   /api/history、/api/sessions、/api/export、/ 与 /history）
+├── app.py                  # Flask 主程序（云端 API 入口：/api/interview、/api/interview/text、
+│                           #   /api/health、/api/history、/api/sessions、/api/export，
+│                           #   页面 / 与 /history 与 /text）
 ├── asr_service.py          # ASR 语音识别服务
 ├── tts_service.py          # TTS 语音合成服务
 ├── llm_service.py          # LLM 大语言模型服务（注入题库参考块）
@@ -30,7 +31,7 @@ cloud/
 ├── report_guard.py         # 报告闸门：报告里有没有「」原话引用（纯函数，见 3.8）
 ├── requirements.txt        # Python 依赖列表
 │
-├── static/index.html       # 展示页 + 历史列表（同一个 HTML，按路径分支；只读，见 ../README.md 4.2.1）
+├── static/index.html       # 展示页 + 历史列表 + 文字演练（同一个 HTML，按路径分支，见 ../README.md 4.2.1）
 ├── data/sessions/          # 运行期落盘的会话 json（.gitignore，删掉不影响运行）
 │
 ├── test_services.py        # ASR/TTS 服务测试脚本（运行后在 cloud/ 下生成下面两个 wav）
@@ -222,6 +223,32 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 **逐题复盘**（`per_question`）：每题给「他的原话 + 更好的答法」。这是整份反馈里**最像"练习工具"**的一节 —— 总分和维度只说明现状，这一节才告诉他下一遍该怎么答。页面上它默认**折起来**（10 题展开会把卡片拉得很长），导出到 Markdown 里是单独一节「## 逐题复盘」。
 
 > 单测分两处：`test_score_guard.py` 是纯标准库的模块单测；`test_scoring.py` 把 LLM 与三个 service 全打桩，验的是**接线**与**端侧协议不变**，需要 Flask/openai，归"装依赖才跑"那一档（见 5.5）。
+
+---
+
+### 3.10 文字演练（`/text` + `POST /api/interview/text`，2026-10-01 新增）
+
+**无硬件的降级通道。** 动机两个：
+
+* **开发与验证**：板子不在手边也能把整条链路走一遍。本来就有 `rehearsal.py`（它是板子的替身），但那个每轮要真打 2 次 TTS + 1 次 ASR，而这个**只打 LLM** —— 成本约为它的 1/4；
+* **演示兜底**：体验点最怕"板子坏了 / 麦克风拾不到音 / 网络抽风"。文字演练让现场**永远有一个能用的入口**。
+
+**它不该被当成产品**：面试练习的核心是"开口说"，打字练不出语速、卡壳和口头语。所以页面上有一条醒目的黄条写着"正式使用请对着开发板说" —— 这不是客套，是防止它把产品定位带偏。
+
+| | |
+|---|---|
+| 端点 | `POST /api/interview/text` |
+| 动作 | `state="start"` → 建会话并**让面试官先说第一句**；其余 → 提交一次文字回答 |
+| 页面 | `/text`（与前两个视图**共用同一个 HTML**，按路径分支） |
+| 岗位 | 页面上可选**题库里全部 6 个岗位** —— 这是整个产品里唯一能选岗位的地方（端侧的岗位编译在固件里，换要重烧） |
+
+三条刻意的边界：
+
+1. **新开端点，不复用 `/api/interview`** —— 板子那条链路的响应体有单测守着（字段**恰好** 6 个），不该为了省几行代码去动它；
+2. **不走 TTS** —— 省钱的全部来源，也有单测盯着（打桩断言 `tts_text_to_audio` 一次都没被调用）；
+3. **岗位以会话里的为准**，不信客户端再传的那个 —— 刷新页面之后客户端可能忘了当初选的是什么。
+
+> `state="start"` 走的是 `llm_service.llm_interview()` 里那个 `state == "start"` 分支（`start_interview`）。它在**设备链路上不可达**（板子永远先录音、只发 `recording_finished`，台账 §11.25 记过这属于"死代码"）—— 文字演练正好需要"云端先开口"，它在这里复活了。
 
 ---
 
