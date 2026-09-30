@@ -319,5 +319,56 @@ class TestScoreInterviewWithPerQuestion(ScoringTestCase):
         self.assertNotIn("这是报告正文", sent)
 
 
+class TestStageInjection(unittest.TestCase):
+    """`next_question` 按轮次注入【当前阶段】，并且**只在技术段**给题库参考块。"""
+
+    QUERY = "我用向量数据库做检索，召回率提升到 92%。"
+    BLOCK_HEADER = "【本轮参考题"
+
+    def ask(self, round_number):
+        """造一场到第 N 轮为止的历史，调一次 next_question，拿回它真正用的 system_prompt。"""
+        history = []
+        for r in range(1, round_number):
+            history.append({"role": "user", "content": f"第 {r} 轮回答：{self.QUERY}"})
+            history.append({"role": "assistant", "content": f"第 {r} 轮的追问？"})
+        history.append({"role": "user", "content": self.QUERY})
+        with mock.patch.object(llm_service, "call_llm", return_value="一句问话？") as patched:
+            llm_service.next_question("AI 应用开发", history[:-1], self.QUERY)
+        return patched.call_args.kwargs["system_prompt"]
+
+    def test_每轮注入的是它那一段(self):
+        for round_number, name in ((1, "开场"), (2, "背景深挖"),
+                                   (3, "背景深挖"), (5, "技术问答"),
+                                   (9, "技术问答"), (10, "反问环节")):
+            with self.subTest(round=round_number):
+                self.assertIn(f"【当前阶段：{name}】", self.ask(round_number))
+
+    def test_参考块只在技术段出现(self):
+        """背景深挖问的是他自己的项目，题库帮不上忙 —— 注进去只会把话题拽走。"""
+        self.assertNotIn(self.BLOCK_HEADER, self.ask(1), "开场不该有参考题")
+        self.assertNotIn(self.BLOCK_HEADER, self.ask(2), "背景深挖不该有参考题")
+        self.assertIn(self.BLOCK_HEADER, self.ask(5), "技术问答段应当注入参考题")
+        self.assertNotIn(self.BLOCK_HEADER, self.ask(10), "反问环节不该有参考题")
+
+    def test_开场那一段明确说了不要再让他自我介绍(self):
+        """真实数据里出现过：候选人一开口就自报家门，面试官却又让他"介绍一下自己"。
+        这一段就是冲着那个来的。"""
+        self.assertIn("不要再请他「介绍一下自己」", self.ask(1))
+
+    def test_硬性要求仍在提示词末尾(self):
+        """⚠️ §11.20 的修复靠它留在结尾（recency）。加了阶段块之后也得在。"""
+        for round_number in (1, 5, 10):
+            with self.subTest(round=round_number):
+                self.assertTrue(self.ask(round_number).rstrip().endswith(
+                    "遇到的最大挑战吗？"), "【硬性要求】不再位于提示词末尾")
+
+    def test_占位符都替换干净了(self):
+        for round_number in (1, 5, 10):
+            with self.subTest(round=round_number):
+                prompt = self.ask(round_number)
+                for placeholder in ("{stage_block}", "{reference_block}", "{role}"):
+                    self.assertNotIn(placeholder, prompt, f"{placeholder} 没被替换掉")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

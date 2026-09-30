@@ -10,6 +10,7 @@ from openai import OpenAI
 from finish_guard import match_reason
 from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
+import interview_stage
 import report_guard
 import score_guard
 
@@ -164,20 +165,59 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     #  2. 候选词用**候选人刚说的那段话**：他要接着答的内容就是选题方向。
     #  3. 岗位映射不到题库（例如仍是旧的「产品经理」默认值）、或题库缺失时，
     #     build_reference_block 返回 ""，提示词与没有题库时完全一致 —— 优雅退化为自由提问。
+    # ---- 本轮属于哪一段（见 cloud/interview_stage.py）----
+    #
+    # 分工：**代码决定"现在处于哪一段"，模型决定"这一段里问什么"**。
+    # 不让模型自己数轮次 —— 它数不准，而且会从历史里学（§11.20 的教训）。
+    #
+    # ⚠️ 这里收到的 history **不含本轮回答**（llm_interview 传的是 history[:-1]），
+    #    长度是 2N-2，所以 +1 才是"端侧第几次按 K1"的那一轮。
+    round_number = len(history) // 2 + 1
+    stage = interview_stage.stage_key(round_number)
+
+    # ---- 题库参考块 ----
+    # ⚠️ **只在技术问答那一段取**：背景深挖问的是他自己的项目，题库帮不上忙，
+    #    注进去只会把话题从他自己的经历上拽走（顺带每轮省下两百多字提示词）。
     asked_text = " ".join(m.get("content", "") for m in history if m.get("role") == "assistant")
-    reference_block = build_reference_block(role, last_answer, asked_text, len(history) // 2)
+    reference_block = ""
+    if interview_stage.uses_question_bank(stage):
+        reference_block = build_reference_block(role, last_answer, asked_text, len(history) // 2)
 
     system_prompt = skill["system_prompt"]
+
+    # ---- 当前阶段 ----
+    stage_text = (skill.get("stages") or {}).get(stage) if stage else None
+    if stage_text:
+        system_prompt = system_prompt.replace(
+            "{stage_block}",
+            f"【当前阶段：{stage_text.get('name', '')}】\n{stage_text.get('instruction', '')}")
+        logger.info(f"[节奏] 第 {round_number} 轮 = {stage_text.get('name')}")
+    else:
+        # 查不到就整块去掉，提示词退化成"没有阶段"的样子（同参考块的优雅退化）。
+        # 正常情况下第 11 轮走不到这里 —— 它被结束判据分流去生成报告了。
+        logger.warning(f"[节奏] 第 {round_number} 轮查不到阶段（不该发生）")
+        system_prompt = system_prompt.replace("{stage_block}\n\n", "")
+        system_prompt = system_prompt.replace("{stage_block}", "")
+
     if reference_block:
         # 台账 §11.22 留了个悬案：「参考块到底注进去了没有」。它只改 system prompt，
         # 不进 history、不在回复里留痕，所以事后从任何输出都反推不出来 —— 只能当场记。
-        # 一行日志换掉一类"面试变自由提问了却不知道从哪一轮开始"的排查。
-        logger.info(f"[题库] 本轮注入参考块：{len(reference_block)} 字"
-                    f"（轮次 {len(history) // 2}，检索词 {len(last_answer)} 字）")
+        logger.info(f"[题库] 第 {round_number} 轮注入参考块：{len(reference_block)} 字"
+                    f"（检索词 {len(last_answer)} 字）")
         system_prompt = system_prompt.replace("{reference_block}", reference_block)
     else:
-        logger.info("[题库] 本轮无参考块（岗位未映射 / 题库缺失 / 候选人这轮说得太少）"
-                    "—— 退化为自由提问")
+        # ⚠️ 这句日志要**分清两种"没有参考块"**：
+        #    a) 这一段本来就不用（深挖/反问问的是他自己的经历）—— 正常；
+        #    b) 该用却拿不到（岗位对不上题库 / 题库没随代码拷过来 / 他这轮说得太少）。
+        # 混成一句话是 2026-10-01 加阶段时才发现的：照旧写法，第 1~3 轮会报
+        # "岗位未映射 / 题库缺失"，把人往错的方向带。
+        if interview_stage.uses_question_bank(stage):
+            logger.info("[题库] 本轮该有参考块却拿不到（岗位未映射 / 题库缺失 / "
+                        "候选人这轮说得太少）—— 退化为自由提问")
+        else:
+            name = stage_text.get("name") if stage_text else "无阶段"
+            logger.info(f"[题库] 第 {round_number} 轮（{name}）本就不注入参考块 "
+                        f"—— 这一段问的是他自己的经历")
         # 空块要连占位符所在的那一行一起去掉，否则留下连续空行
         system_prompt = system_prompt.replace("{reference_block}\n\n", "")
         system_prompt = system_prompt.replace("{reference_block}", "")
