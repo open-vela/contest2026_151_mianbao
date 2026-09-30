@@ -310,6 +310,14 @@
     margin: 0 0 18px;
   }
   .starter label { display: block; font-size: 13px; color: var(--ink-dim); margin-bottom: 18px; }
+  /* 「你有一场还没结束」那一块：有未结束的场次时，开始按钮会被禁用，
+     并在这里列出那几场，点进去把它结束掉。 */
+  .starter .resume { margin-bottom: 20px; }
+  .starter .resume h3 { margin: 0 0 6px; font-size: 14px; }
+  .starter .resume p { font-size: 13px; color: var(--ink-dim); margin: 0 0 10px; line-height: 1.6; }
+  .starter .sess { margin-bottom: 8px; }
+  .btn:disabled, #startBtn:disabled { opacity: .45; cursor: default; }
+  #answerBox:disabled { background: #f7f8fa; }
   .starter select {
     font: inherit; font-size: 14px; color: var(--ink); background: #fff;
     border: 1px solid var(--line); border-radius: 10px;
@@ -732,6 +740,28 @@
     return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + hm;
   }
 
+  // 一条场次记录（历史列表与文字演练的"未结束"列表共用）。
+  // `base` 是点进去之后落到哪个视图：历史里落到 `/`，文字演练里落到 `/text`。
+  function sessItem(s, base) {
+    return '<a class="sess" href="' + base + "?session_id=" +
+        esc(encodeURIComponent(s.session_id || "")) + '">' +
+      '<div class="sess-top">' +
+        '<span class="sess-role">' + esc(s.role || "面试") + '</span>' +
+        '<span class="sess-time">' +
+          esc(fmtTime(s.updated_at || s.created_at || s.mtime)) + '</span>' +
+        '<span class="sess-meta">' + esc(s.rounds || 0) + ' 轮' +
+          (s.is_finished ? "" : ' · <span class="sess-new">进行中</span>') +
+          (typeof s.score_total === "number"
+             ? ' · <span class="sess-score">' + esc(s.score_total) + ' 分</span>'
+             : "") +
+        '</span>' +
+      '</div>' +
+      (s.first_answer
+         ? '<div class="sess-answer">' + esc(s.first_answer) + '</div>'
+         : "") +
+    '</a>';
+  }
+
   function renderList(items) {
     if (!items.length) {
       elHistWrap.innerHTML =
@@ -744,25 +774,7 @@
     }
     var html = "";
     for (var i = 0; i < items.length; i++) {
-      var s = items[i] || {};
-      html +=
-        '<a class="sess" href="/?session_id=' +
-            esc(encodeURIComponent(s.session_id || "")) + '">' +
-          '<div class="sess-top">' +
-            '<span class="sess-role">' + esc(s.role || "面试") + '</span>' +
-            '<span class="sess-time">' +
-              esc(fmtTime(s.updated_at || s.created_at || s.mtime)) + '</span>' +
-            '<span class="sess-meta">' + esc(s.rounds || 0) + ' 轮' +
-              (s.is_finished ? "" : ' · <span class="sess-new">进行中</span>') +
-              (typeof s.score_total === "number"
-                 ? ' · <span class="sess-score">' + esc(s.score_total) + ' 分</span>'
-                 : "") +
-            '</span>' +
-          '</div>' +
-          (s.first_answer
-             ? '<div class="sess-answer">' + esc(s.first_answer) + '</div>'
-             : "") +
-        '</a>';
+      html += sessItem(items[i] || {}, "/");
     }
     elHistWrap.innerHTML = html;
   }
@@ -794,21 +806,50 @@
   var textRole = ROLES[0];
   var starting = false;
 
-  function renderStarter() {
-    var opts = "";
-    for (var i = 0; i < ROLES.length; i++) {
+  function renderStarter(unfinished) {
+    var i, opts = "";
+    for (i = 0; i < ROLES.length; i++) {
       opts += '<option value="' + esc(ROLES[i]) + '">' + esc(ROLES[i]) + "</option>";
     }
-    elStarter.innerHTML =
-      '<div class="starter">' +
-        "<h2>文字演练</h2>" +
-        '<p class="warn">这是<b>无硬件的降级演练</b>：打字练不出语速、卡壳和口头语 ——' +
-          "正式使用请对着开发板说。</p>" +
-        '<label>面试岗位 <select id="roleSel">' + opts + "</select></label>" +
-        '<button class="btn" id="startBtn" ' +
-          'style="font-size:14px;padding:9px 18px">开始面试</button>' +
-      "</div>";
-    document.getElementById("startBtn").addEventListener("click", startText);
+
+    var html = '<div class="starter"><h2>文字演练</h2>' +
+      '<p class="warn">这是<b>无硬件的降级演练</b>：打字练不出语速、卡壳和口头语 ——' +
+        "正式使用请对着开发板说。</p>";
+
+    // ⚠️ 有未结束的场次时**不许开新的一场**（用户 2026-10-01 提的规则）。
+    // 第一版的教训很具体：开新的一场会再造一个"进行中"的会话，而输入口只长在
+    // 那一场自己的页面上 —— 走开就再也找不回来，于是记录里堆着一堆半截面试，
+    // 连结束都没法结束。
+    if (unfinished.length) {
+      html += '<div class="resume"><h3>你有一场还没结束</h3>' +
+              "<p>先打开它、说一句「结束吧」把它收尾，才能开始新的一场。</p>";
+      for (i = 0; i < unfinished.length; i++) {
+        html += sessItem(unfinished[i], "/text");
+      }
+      html += "</div>";
+    }
+
+    html += '<label>面试岗位 <select id="roleSel">' + opts + "</select></label>" +
+      '<button class="btn" id="startBtn" style="font-size:14px;padding:9px 18px"' +
+      (unfinished.length ? " disabled" : "") + ">开始面试</button></div>";
+
+    elStarter.innerHTML = html;
+    if (!unfinished.length) {
+      document.getElementById("startBtn").addEventListener("click", startText);
+    }
+  }
+
+  function loadStarter() {
+    fetch("/api/sessions?limit=20", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var unfinished = (d.sessions || []).filter(function (s) { return !s.is_finished; });
+        renderStarter(unfinished);
+      })
+      .catch(function () {
+        // 列表拿不到**不能挡住"开始"** —— 那会让文字演练在云端抽风时彻底用不了。
+        renderStarter([]);
+      });
   }
 
   function textPost(payload) {
@@ -822,8 +863,13 @@
   function startText() {
     if (starting) { return; }          // 防连点：点两下会开出两场会话
     starting = true;
+    var btn = document.getElementById("startBtn");
     var sel = document.getElementById("roleSel");
     textRole = sel ? sel.value : ROLES[0];
+    if (btn) { btn.disabled = true; btn.textContent = "正在准备…"; }
+    // ⚠️ 即时反馈：这一下要等 LLM（一两秒）。不给任何反馈，用户的感觉就是"卡住了"
+    //    —— 这是 2026-10-01 用户报的第一个问题，延迟本身是模型的，不是我们的。
+    setStatus("ok", "面试官正在准备…");
     textPost({ role: textRole, state: "start" })
       .then(function (d) {
         if (!d.session_id) { throw new Error(d.error || "创建会话失败"); }
@@ -835,7 +881,10 @@
         tick();
         elAnswerBox.focus();
       })
-      .catch(function (e) { setStatus("err", e.message); })
+      .catch(function (e) {
+        setStatus("err", e.message);
+        if (btn) { btn.disabled = false; btn.textContent = "开始面试"; }
+      })
       .then(function () { starting = false; });
   }
 
@@ -843,6 +892,8 @@
     var text = (elAnswerBox.value || "").trim();
     if (!text || !SID || elSendBtn.disabled) { return; }
     elSendBtn.disabled = true;
+    elAnswerBox.disabled = true;
+    setStatus("ok", "面试官正在思考…");   // 同上：等待期间必须让用户看到"它在动"
     textPost({ session_id: SID, role: textRole, text: text })
       .then(function (d) {
         if (d.error) { throw new Error(d.error); }
@@ -850,7 +901,11 @@
         tick();                        // 立刻拉一次，不必等下一轮轮询
       })
       .catch(function (e) { setStatus("err", e.message); })
-      .then(function () { elSendBtn.disabled = false; elAnswerBox.focus(); });
+      .then(function () {
+        elSendBtn.disabled = false;
+        elAnswerBox.disabled = false;
+        elAnswerBox.focus();
+      });
   }
 
   // Ctrl/⌘+Enter 发送（与 myagent 的习惯一致）；单独 Enter 换行，不打字误发。
@@ -886,7 +941,7 @@
       setInterval(tick, POLL_MS);   // 评分是后台算的，得轮询才看得到它出现
     } else {
       elMain.style.display = "none";   // 还没开始：只显示开场面板
-      renderStarter();
+      loadStarter();
       elStarter.style.display = "";
     }
   } else {

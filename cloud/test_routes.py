@@ -37,6 +37,7 @@ os.environ["MIMO_API_KEY"] = "dummy-key-for-tests-never-used"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import app as cloud_app          # noqa: E402
+import llm_service               # noqa: E402
 import session_store             # noqa: E402
 
 # 合法的会话 id（形状同 uuid4；会话白名单要求 1~64 位 [A-Za-z0-9_-]）
@@ -390,6 +391,18 @@ class TestTextInterview(RouteTestCase):
                                        "text": "你好。"})
         self.assertEqual(llm.call_args.args[0], "大模型算法工程师",
                          "岗位该以会话里的为准")
+
+    def test_start_prompt_guards_against_role_play(self):
+        """⚠️ 开场提示词曾经很薄（三句话、无任何输出约束）—— 它从大赛第一天起就在
+        设备链路上不可达，所以从没被调过、也就从没被调教过。文字演练一复活它，
+        毛病当场暴露：**模型扮演起候选人**，还写出 `[姓名]` 这种方括号占位符
+        （2026-10-01 用户实测，台账 §11.38）。
+
+        这条测试是那次事故的化石：删掉这几句约束，问题会回来。
+        """
+        prompt = llm_service.load_skill("start_interview")["system_prompt"]
+        for must in ("不要扮演候选人", "方括号占位符", "只输出", "80 字以内"):
+            self.assertIn(must, prompt, f"开场提示词里缺了「{must}」这条约束")
 
     def test_device_route_is_not_affected(self):
         """新端点有没有连累板子那条链路 —— 那条约定的响应形状再确认一次。"""
