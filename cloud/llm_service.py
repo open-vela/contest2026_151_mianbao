@@ -187,6 +187,8 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
 
     # ---- 当前阶段 ----
     stage_text = (skill.get("stages") or {}).get(stage) if stage else None
+    stage_name = stage_text.get("name", "") if stage_text else ""
+    stage_brief = stage_text.get("brief", "") if stage_text else ""
     if stage_text:
         system_prompt = system_prompt.replace(
             "{stage_block}",
@@ -231,7 +233,15 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     # 读的时候过一道闸，已经脏掉的会话就能自己恢复，不必重启云端重开一场。
     # 干净历史经过这里是逐条 no-op（见 reply_guard 的"干净文本零改动"）。
     messages = clean_history(history)
-    messages.append({"role": "user", "content": f"候选人回答：{last_answer}\n\n请根据回答决定是追问还是提出新问题。"})
+    # ⚠️ 阶段要求**在这一条里再说一遍**，不只写在 system prompt 中段。
+    #    这里是离"下一句要写什么"最近的位置 —— 2026-10-01 的排练证明：只写在 system
+    #    prompt 里挡不住历史势头（前十轮都在追项目，模型就接着追，阶段说明形同虚设）。
+    #    这是 brief 那一栏存在的全部理由。
+    hint = (f"\n\n【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}"
+            if stage_brief else "")
+    messages.append({"role": "user",
+                     "content": f"候选人回答：{last_answer}{hint}\n\n"
+                                f"请根据回答决定是追问还是提出新问题。"})
 
     result = call_llm(
         system_prompt=system_prompt,
@@ -252,6 +262,14 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
         if not cleaned:
             logger.warning("next_question 的回复整段都是元叙述，已替换为兜底问句：%r", result[:120])
             cleaned = FALLBACK_QUESTION
+
+        # 反问环节兜底：这一句是整场里**唯一可以不靠模型**的话（没有个性化内容，
+        # 就是要请对方提问）。2026-10-01 的排练里，模型在那一轮接着追问项目细节 ——
+        # 提示词劝不住的在代码里拦，同 reply_guard / report_guard 的取舍。
+        if stage == "ask_back" and not interview_stage.is_ask_back(cleaned):
+            logger.warning("[节奏] 反问环节没问出「想问」—— 换成固定问句：%r", cleaned[:60])
+            cleaned = interview_stage.ASK_BACK_FALLBACK
+
         return {"text": cleaned, "next_action": next_action}
     else:
         return {"text": "抱歉，生成问题失败，请重试。", "next_action": "continue"}

@@ -101,6 +101,18 @@ class TestPlanMatchesThePrompt(unittest.TestCase):
                 self.assertTrue(stages[key].get("instruction", "").strip(),
                                 f"{key} 缺 instruction —— 提示词会静默退化成没有阶段")
 
+    def test_每一段都有_brief(self):
+        """`brief` 是追加在**本轮 user 消息最后**的那一句（离"下一句要写什么"最近的位置）。
+
+        ⚠️ 只写在 system prompt 中段挡不住历史势头 —— 2026-10-01 的排练里，模型在
+        技术段和反问段都继续追项目细节。brief 存在的全部理由就是占住那个位置。
+        """
+        stages = self.skill.get("stages") or {}
+        for key, _, _ in interview_stage.STAGE_PLAN:
+            with self.subTest(stage=key):
+                self.assertTrue(stages.get(key, {}).get("brief", "").strip(),
+                                f"{key} 缺 brief —— 阶段提示就只剩 system prompt 里那句了")
+
     def test_提示词里没有多余的段(self):
         stages = set((self.skill.get("stages") or {}).keys())
         self.assertEqual(stages, {key for key, _, _ in interview_stage.STAGE_PLAN})
@@ -116,6 +128,26 @@ class TestPlanMatchesThePrompt(unittest.TestCase):
                         "【硬性要求】那段不在结尾了 —— 见台账 §11.20")
         self.assertLess(prompt.index("【面试纪律】"), prompt.index("{stage_block}"),
                         "阶段块应当排在【面试纪律】之后")
+
+
+class TestAskBackGuard(unittest.TestCase):
+    """反问环节的代码兜底 —— 判据故意宽，见 `interview_stage.is_ask_back`。"""
+
+    def test_认出常见的反问说法(self):
+        for text in ("您有什么想问我的吗？",
+                     "有没有想问我的？",
+                     "我的问题问完了，你还有什么想问的吗？"):
+            with self.subTest(text=text):
+                self.assertTrue(interview_stage.is_ask_back(text))
+
+    def test_不是请对方提问的(self):
+        for text in ("", None, [], "那你们线上有没有做监控？", "能具体说说缓存失效吗？"):
+            with self.subTest(text=text):
+                self.assertFalse(interview_stage.is_ask_back(text))
+
+    def test_兜底问句自己得能过判据(self):
+        """不然就是逻辑自相矛盾：替换完仍然"不合格"。"""
+        self.assertTrue(interview_stage.is_ask_back(interview_stage.ASK_BACK_FALLBACK))
 
 
 if __name__ == "__main__":

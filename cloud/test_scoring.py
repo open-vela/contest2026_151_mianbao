@@ -26,6 +26,7 @@ os.environ.setdefault("MIMO_API_KEY", "dummy-for-tests-never-used")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import app as cloud_app        # noqa: E402
+import interview_stage         # noqa: E402
 import llm_service             # noqa: E402
 import session_store           # noqa: E402
 import score_guard             # noqa: E402
@@ -325,16 +326,19 @@ class TestStageInjection(unittest.TestCase):
     QUERY = "我用向量数据库做检索，召回率提升到 92%。"
     BLOCK_HEADER = "【本轮参考题"
 
-    def ask(self, round_number):
-        """造一场到第 N 轮为止的历史，调一次 next_question，拿回它真正用的 system_prompt。"""
+    def ask_kwargs(self, round_number, reply="一句问话？"):
+        """造一场到第 N 轮为止的历史，调一次 next_question，拿回 call_llm 的完整入参。"""
         history = []
         for r in range(1, round_number):
             history.append({"role": "user", "content": f"第 {r} 轮回答：{self.QUERY}"})
             history.append({"role": "assistant", "content": f"第 {r} 轮的追问？"})
         history.append({"role": "user", "content": self.QUERY})
-        with mock.patch.object(llm_service, "call_llm", return_value="一句问话？") as patched:
+        with mock.patch.object(llm_service, "call_llm", return_value=reply) as patched:
             llm_service.next_question("AI 应用开发", history[:-1], self.QUERY)
-        return patched.call_args.kwargs["system_prompt"]
+        return patched.call_args.kwargs
+
+    def ask(self, round_number):
+        return self.ask_kwargs(round_number)["system_prompt"]
 
     def test_每轮注入的是它那一段(self):
         for round_number, name in ((1, "开场"), (2, "背景深挖"),
@@ -368,6 +372,52 @@ class TestStageInjection(unittest.TestCase):
                 prompt = self.ask(round_number)
                 for placeholder in ("{stage_block}", "{reference_block}", "{role}"):
                     self.assertNotIn(placeholder, prompt, f"{placeholder} 没被替换掉")
+
+    def test_本轮_user_消息末尾也带着阶段要求(self):
+        """★ 这是 2026-10-01 首次排练之后补的。
+
+        只把阶段写进 system prompt **中段**挡不住历史势头：那次前十轮都在追项目，
+        模型在技术段、反问段**都继续追项目**（参考题明明注进去了，245~278 字）。
+        brief 就是为了占住"离下一句最近"的那个位置。
+        """
+        for round_number, fragment in ((1, "不要再让他自我介绍"),
+                                       (5, "换到技术概念"),
+                                       (10, "只问这一句")):
+            with self.subTest(round=round_number):
+                last = self.ask_kwargs(round_number)["messages"][-1]["content"]
+                self.assertIn("候选人回答：", last, "末尾那条不该丢掉候选人的回答")
+                self.assertIn(f"第 {round_number} 轮", last)
+                self.assertIn(fragment, last, "本轮的阶段要求没带上")
+
+
+class TestAskBackFallback(unittest.TestCase):
+    """反问环节：模型没问出「有什么想做的吗」时，**代码**换成固定问句。
+
+    同 reply_guard / report_guard 的取舍 —— 提示词劝不住的在代码里拦。
+    """
+
+    def run_round(self, round_number, reply):
+        history = []
+        for r in range(1, round_number):
+            history.append({"role": "user", "content": f"第 {r} 轮回答"})
+            history.append({"role": "assistant", "content": f"第 {r} 轮的追问？"})
+        history.append({"role": "user", "content": "本轮回答"})
+        with mock.patch.object(llm_service, "call_llm", return_value=reply):
+            return llm_service.next_question("AI 应用开发", history[:-1], "本轮回答")
+
+    def test_没问出想问就换成固定句(self):
+        out = self.run_round(10, "那你们线上有没有做答案质量的监控？")
+        self.assertEqual(out["text"], interview_stage.ASK_BACK_FALLBACK)
+        self.assertEqual(out["next_action"], "continue")
+
+    def test_正常问出想问就原样保留(self):
+        reply = "我的问题问完了，您有什么想问我的吗？"
+        self.assertEqual(self.run_round(10, reply)["text"], reply)
+
+    def test_别的轮次不受影响(self):
+        """兜底只在反问那一轮生效 —— 别把技术轮的正常追问也换掉。"""
+        reply = "那你们线上有没有做答案质量的监控？"
+        self.assertEqual(self.run_round(5, reply)["text"], reply)
 
 
 if __name__ == "__main__":
