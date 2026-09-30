@@ -15,6 +15,9 @@
     python3 cloud/rehearsal.py --rounds 3                # 只跑 3 轮（不校验报告轮）
     python3 cloud/rehearsal.py --say-finish --rounds 3   # 第 3 轮说"结束吧"，验证提前收尾
     python3 cloud/rehearsal.py --no-tts                  # 静音自检：验证空识别短路与历史奇偶
+    python3 cloud/rehearsal.py --short-answers --say-finish --rounds 3
+                                                         # 退化输入：候选人几乎没说话，
+                                                         # 验报告里是否仍有「」引用
 
 ⚠️ 三条踩过的坑，脚本已经替你处理，改的时候别踩回去：
   1. **每轮必须带 `state="recording_finished"`**（`cloud/app.py:42`）。漏掉的话
@@ -35,6 +38,10 @@
     现在 `FALLBACK_STRINGS` 专门查"这一步是不是失败得体面"。
   * **判据要跟着"判据本身"变**。报告轮由结束判据决定，所以"末轮必是报告"这种
     断言只在 `--rounds 11` 或 `--say-finish` 时成立，`--rounds 3` 下它是假失败。
+  * **测不到的路径等于没有这道防线**（2026-09-30 补）。报告里"必须引用候选人原话"
+    是提示词写死的硬要求，而真机上它失效过（台账 §11.27）—— 排练之所以没拦住，
+    是因为**它压根没查这一条**，而且默认那组回答长度正常、四个维度总有可评的，
+    那条要求永远被逼不到墙角。现在补了判据，也补了 `--short-answers` 这个入口。
 """
 import argparse
 import base64
@@ -47,6 +54,7 @@ import uuid
 import requests
 
 from finish_guard import match_reason
+from report_guard import has_quote
 from reply_guard import FALLBACK_QUESTION
 
 # ---------------- 判据阈值（改动要同步更新台账 §11.21） ----------------
@@ -128,6 +136,16 @@ CANDIDATE_ANSWERS = [
     "现在这套是边做边补的，出问题排查起来比较被动。",
     "好的，这个岗位我大概了解了，暂时没有什么想问的。",
 ]
+
+# 「极短回答」模式的输入（`--short-answers`）。
+#
+# 逐字取自 2026-09-30 真机那次失败的输入：候选人三句只有 6 / 2 / 5 个字，报告的
+# 四个维度全写「未涉及」，「」引用一个也没有（台账 §11.27）。
+#
+# 这个模式存在的唯一理由：上面那组 `CANDIDATE_ANSWERS` 都是**正常长度**的回答，
+# 四个维度总有可评的 —— 于是"报告必须引用原话"这条要求**永远被逼不到墙角**，
+# 排练也就测不出它在退化输入下会失效。§11.27 那次就是这么漏过去的。
+SHORT_ANSWERS = ["你好。", "嗯。", "还好吧。"]
 
 
 def _parse(response) -> tuple:
@@ -261,6 +279,11 @@ def main() -> int:
                         help=f"把最后一轮的回答换成「{FINISH_PHRASE}」，验证候选人"
                              f"用语音请求结束面试那条路径（要过一遍 TTS→ASR，"
                              f"只有真跑才知道转写结果还能不能命中白名单）")
+    parser.add_argument("--short-answers", action="store_true",
+                        help="把候选人回答换成三句极短的（你好。/ 嗯。/ 还好吧。），"
+                             "复现「候选人几乎没说话」这条退化路径。默认那组回答长度正常，"
+                             "四个维度总有可评的，测不到报告端那条最容易失效的要求。"
+                             "常与 --say-finish --rounds 3 连用：3 轮就出报告，便宜")
     args = parser.parse_args()
 
     # 0 轮什么都证明不了，而且它会让所有判据"空过"、最后在 max() 上崩栈
@@ -310,7 +333,8 @@ def main() -> int:
         if args.say_finish and number == args.rounds:
             answer = FINISH_PHRASE
         else:
-            answer = CANDIDATE_ANSWERS[index % len(CANDIDATE_ANSWERS)]
+            pool = SHORT_ANSWERS if args.short_answers else CANDIDATE_ANSWERS
+            answer = pool[index % len(pool)]
         started = time.time()
 
         audio = synthesize_answer(base_url, answer)
@@ -389,6 +413,16 @@ def main() -> int:
                 fail(f"第 {number} 轮问句 {len(text)} 字，超过 {MAX_QUESTION_CHARS} 字（话痨复发？）")
         elif len(text) > MAX_REPORT_CHARS:
             fail(f"报告 {len(text)} 字，超过 {MAX_REPORT_CHARS} 字")
+
+        # 报告轮必须带「」原话引用 —— 提示词把这条写成了硬性要求（注明过「没有例外」），
+        # 而 2026-09-30 的真机实测里它**失效了**（台账 §11.27 / §11.30）。
+        #
+        # ⚠️ 这条判据**此前根本不存在**：排练只查了报告长度、没查引用，所以那次失败
+        #    是从这道防线里直接漏过去的。补上它，`--short-answers` 才有意义 ——
+        #    否则新开关只是"换个输入再跑一遍"，什么都证明不了。
+        if expected_kind == "report" and not has_quote(text):
+            fail(f"第 {number} 轮是报告，但里面没有任何「」原话引用 —— 候选人会听出"
+                 f"这报告与他实际说过的话无关（提示词的要求是「没有例外」）")
 
         # next_action 是端侧唯一的协议开关：`strcmp(next_action,"continue") != 0`
         # 就清空会话（main.c:207）。值不对，下一场面试会串到上一场的 session 上。
