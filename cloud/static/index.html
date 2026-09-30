@@ -395,7 +395,14 @@
     }
     elDone.style.display = "";
     elReport.innerHTML = reportCard(d);
-    elReport.style.display = "";
+    // ⚠️ 这里必须是具体的 display 值，**不能写 `""`**。
+    // `style.display = ""` 只是"清除行内样式"，而 `#report` 是被 CSS 里的
+    // `#report { display: none }` 藏起来的 —— 清掉行内样式之后那条规则重新生效，
+    // 卡片**永远显示不出来**。2026-09-30 实测踩到：报告卡片与评分区一直不渲染，
+    // 而接口数据、DOM、CSS 全都是对的（见台账 §11.33）。
+    // 对照：#doneBadge 那类是在 HTML 上写 `style="display:none"`，清除行内样式
+    // 就能恢复默认 —— 同一个写法，隐藏方式不同，结果完全相反。
+    elReport.style.display = "block";
   }
 
   // ---------- 渲染 ----------
@@ -459,7 +466,9 @@
       for (var j = renderedCount; j < msgs.length; j++) { frag += makeRow(msgs[j], true); }
       elWrap.insertAdjacentHTML("beforeend", frag);
       renderedCount = msgs.length;
-      if (wantBottom) { toBottom(); } else { elJump.style.display = ""; }
+      // 同 elReport：`#jump` 也是被 CSS 藏起来的，必须给具体值。
+      // 这个 bug 比报告卡片更早 —— "有新消息 ↓"按钮从写出来那天起就没显示过。
+      if (wantBottom) { toBottom(); } else { elJump.style.display = "inline-block"; }
     }
   }
 

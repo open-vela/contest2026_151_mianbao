@@ -46,6 +46,7 @@ cloud/
 ├── test_routes.py          # HTTP 路由测试（需 Flask/openai；进程内 test client，不联网、不花钱）
 ├── test_report_retry.py    # 报告缺「」引用时的兜底重试（call_llm 打桩，不联网、不花钱）
 ├── test_scoring.py         # P2 评分接线 + **端侧协议不变**（三个 service 全打桩，不花钱）
+├── test_page_display.py    # 展示页静态检查：被 CSS 藏着的元素不能用 display="" 显示（纯标准库）
 ├── run_tests.sh            # 顺序跑上面全部测试（本地与 CI 共用；两档，见 5.5）
 ├── rehearsal.py            # 校验④  PC 端 11 轮全流程试运行（真打 ASR/LLM/TTS）
 ├── ab_next_question.py     # 校验⑤  提示词改版的单变量 A/B（真打 LLM）
@@ -301,7 +302,7 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 
 | # | 脚本 | 验什么 | 跑法 | 通过标准 | 花钱 |
 |---|------|--------|------|----------|------|
-| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 报告闸门 / 评分校验 / 落盘 / 导出）+ **需依赖的接线测试**（`test_routes.py` 验路由与内存/磁盘兜底、`test_report_retry.py` 验报告缺引用时的兜底重试、`test_scoring.py` 验 P2 评分接线与**端侧协议不变**） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
+| ① | `bash run_tests.sh` | 全部测试，分两档：**纯单测**（题库 / 回复闸门 / 结束判据 / 报告闸门 / 评分校验 / 落盘 / 导出 / 展示页静态检查）+ **需依赖的接线测试**（`test_routes.py` 验路由与内存/磁盘兜底、`test_report_retry.py` 验报告缺引用时的兜底重试、`test_scoring.py` 验 P2 评分接线与**端侧协议不变**） | `bash run_tests.sh` | 每个文件全过（脚本会汇总"✅ N 个测试文件全部通过"） | 否 |
 | ② | `test_*.py` | 单独跑某一个（改哪个模块跑哪个） | `python3 test_finish_guard.py` | 全过 | 否 |
 | ③ | `rehearsal.py` | PC 端整条链路 11 轮：ASR→LLM→TTS 全真调，逐轮体检 | **先起 Flask**，再 `python3 rehearsal.py` | 11 轮全 HTTP 200、`next_action`/`type` 逐轮对得上、第 11 轮出报告、历史 22 条、问句 ≤150 字、TTS ≤4 MiB、无参考块泄漏、**无兜底文案**、导出接口 200 | 是 |
 | ③b | `rehearsal.py --say-finish --rounds 3` | 语音结束那条路径（真过一遍 TTS→ASR，看转写还能不能命中白名单） | 同上 | 第 3 轮 `type=report`、`next_action=finish`、导出可用 | 是 |
