@@ -80,6 +80,7 @@ contest2026_151_mianbao/
 │   ├── finish_guard.py           #   结束判据：候选人明说"结束吧"才提前收尾（宁可漏判）
 │   ├── score_guard.py            #   评分 JSON 校验（结构化评分用）
 │   ├── report_export.py          #   报告导出：Markdown / JSON 渲染
+│   ├── report_guard.py           #   报告闸门：查报告里有没有「」原话引用，缺了就重试一次
 │   ├── static/index.html         #   对话展示页 + 报告卡片（只读，见 4.2.1）
 │   ├── rehearsal.py              #   校验①  PC 端 11 轮全流程试运行（带阈值断言）
 │   ├── ab_next_question.py       #   校验②  提示词改版的单变量 A/B（旧版 vs 新版）

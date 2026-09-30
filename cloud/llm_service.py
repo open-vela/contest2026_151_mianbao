@@ -10,6 +10,7 @@ from openai import OpenAI
 from finish_guard import match_reason
 from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
+import report_guard
 
 logger = logging.getLogger(__name__)
 
@@ -272,12 +273,52 @@ def generate_feedback(role: str, history: list) -> dict:
     user_content = f"以下是完整面试对话：\n\n{conversation}\n\n请生成详细的面试评估报告。"
 
     messages = [{"role": "user", "content": user_content}]
+    temperature = skill.get("temperature", 0.7)
+    max_tokens = skill.get("max_tokens", 1000)
+
     result = call_llm(
         system_prompt=system_prompt,
         messages=messages,
-        temperature=skill.get("temperature", 0.7),
-        max_tokens=skill.get("max_tokens", 1000)
+        temperature=temperature,
+        max_tokens=max_tokens
     )
+
+    # ---- 报告闸：缺「」引用就补一次纠偏重试（见 cloud/report_guard.py）----
+    #
+    # 为什么要在代码里补这一道：提示词把"必须至少引用一处候选人的原话"写成了硬性
+    # 要求（还注明"这一条没有例外"），但 2026-09-30 的真机实测证明**它在退化输入
+    # 下会失效** —— 候选人整场只说了几个字时，四个维度全写"未涉及"，模型把引用
+    # 也一起丢了（台账 §11.27）。同 §11.21 的结论：提示词是"劝"，拦不住的要在
+    # 代码里拦。
+    #
+    # 只在**缺**的时候才多花一次调用：正常轮次（排练 11 轮全部命中过）成本为零。
+    if result and not report_guard.has_quote(result):
+        logger.warning("[报告] 首轮没有「」引用，补一次纠偏重试")
+        retried = call_llm(
+            system_prompt=system_prompt,
+            messages=messages + [
+                {"role": "assistant", "content": result},
+                {"role": "user", "content": report_guard.RETRY_HINT},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        if retried and report_guard.has_quote(retried):
+            logger.info("[报告] 重试后拿到了「」引用")
+            result = retried
+        else:
+            # 重试仍不合格 → **照发**，只记日志。
+            # 宁可用一份缺引用的报告，也不要为了凑格式把已经生成好的内容丢掉、
+            # 或者机械拼一句引用上去 —— 那份报告本身是好的，缺的只是格式要求。
+            logger.warning("[报告] 重试后仍无「」引用，按原样返回（不拦）")
+
+    # 软核对：引用的话是不是真出自候选人。**只记日志**——提示词允许"摘关键词
+    # 连起来"，那种引用本来就不是连续原文，拿它当判据会大面积误报。
+    if result:
+        unmatched = report_guard.check_quote_evidence(result, history)
+        if unmatched:
+            logger.info("[报告] 有 %d 处引用未能与候选人原话逐字对上（关键词拼接属正常）"
+                        "：%s", len(unmatched), unmatched[:2])
 
     if result:
         return {"text": result, "next_action": "finish"}
