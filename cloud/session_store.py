@@ -130,5 +130,82 @@ def load_latest():
 
     if not entries:
         return None
-    newest = max(entries, key=lambda e: e.stat().st_mtime)
+    newest = max(entries, key=_safe_mtime)
     return load(newest.name[:-len(SUFFIX)])
+
+
+def _safe_mtime(entry):
+    """取文件 mtime；文件在遍历中途消失时返回 0（排到最后）而不是抛异常。"""
+    try:
+        return entry.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _first_answer(messages) -> str:
+    """候选人说过的第一句话（列表页靠它帮人认出自己那一场）。"""
+    for message in messages or []:
+        if isinstance(message, dict) and message.get("role") == "user":
+            text = (message.get("content") or "").strip()
+            if text:
+                return text
+    return ""
+
+
+def summary_of(snapshot, mtime=None) -> dict:
+    """把一份完整快照压成**列表页真正要的那几个字段**。
+
+    为什么不直接把快照丢给列表页：一场 10 轮的对话有几十 KB，20 条就是几百 KB，
+    而列表上只显示时间 / 岗位 / 轮次 / 首句 —— 传整场对话过去纯属浪费。
+
+    `first_answer` 是这里最要紧的字段：公共设备上一天有十个人用过，
+    **人靠"我说过什么"认出自己那一场**，光看时间只能定位到"大概"。
+    """
+    if not isinstance(snapshot, dict):
+        snapshot = {}                 # 形状不对就当空的（同 save()/normalize() 的取舍）
+    messages = snapshot.get("messages") or []
+    first = _first_answer(messages)
+    score = snapshot.get("score")
+
+    return {
+        "session_id": snapshot.get("session_id", ""),
+        "role": snapshot.get("role", ""),
+        "created_at": snapshot.get("created_at"),
+        "updated_at": snapshot.get("updated_at"),
+        "mtime": mtime,
+        "rounds": sum(1 for m in messages
+                      if isinstance(m, dict) and m.get("role") == "user"),
+        "is_finished": bool(snapshot.get("is_finished")),
+        "score_total": score.get("total") if isinstance(score, dict) else None,
+        "first_answer": (first[:40] + "…") if len(first) > 40 else first,
+    }
+
+
+def list_summaries(limit=20) -> list:
+    """列出最近的若干场会话（摘要，按最后写入时间倒序）。
+
+    两处刻意的设计：
+
+    * **先按 mtime 排序取前 N 个，再解析** —— 目录迟早会涨到几百个，每个请求都
+      全量解析是不必要的；mtime 是 `stat` 拿的，很便宜，解析才是贵的那个。
+    * **单个文件坏掉不能拖垮整个列表** —— 解析失败就跳过。列表页因为一个半截文件
+      而 500，比"少显示一条记录"严重得多（同 `load()` 的取舍）。
+    """
+    try:
+        entries = [
+            e for e in os.scandir(DATA_DIR)
+            if e.is_file() and e.name.endswith(SUFFIX)
+            and is_valid_id(e.name[:-len(SUFFIX)])
+        ]
+    except OSError:
+        return []          # 目录还不存在：一场都没跑过，属于正常
+
+    entries.sort(key=_safe_mtime, reverse=True)
+
+    summaries = []
+    for entry in entries[:max(0, int(limit))]:
+        snapshot = load(entry.name[:-len(SUFFIX)])
+        if snapshot is None:
+            continue       # 坏文件 / 内容与文件名不符 —— 跳过，不影响别人
+        summaries.append(summary_of(snapshot, _safe_mtime(entry) or None))
+    return summaries

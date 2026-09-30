@@ -243,5 +243,77 @@ class TestExportPathTraversal(RouteTestCase):
         self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.tmp), "pwned")))
 
 
+class TestSessionsList(RouteTestCase):
+    """`GET /api/sessions` —— 公共设备上"我刚面完的那场"就是从这里认出来的。"""
+
+    SID2 = "11112222-3333-4444-5555-666677778888"
+
+    def test_empty(self):
+        r = self.client.get("/api/sessions")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_json()
+        self.assertEqual(body["sessions"], [])
+        self.assertEqual(body["limit"], 20)
+
+    def test_newest_first(self):
+        for session_id, stamp in ((SID, 1), (self.SID2, 2)):
+            session_store.save(snapshot(session_id))
+            os.utime(os.path.join(session_store.DATA_DIR, session_id + ".json"),
+                     (stamp, stamp))
+
+        ids = [s["session_id"] for s in self.client.get("/api/sessions").get_json()["sessions"]]
+        self.assertEqual(ids, [self.SID2, SID])
+
+    def test_item_fields_are_enough_to_recognise_a_session(self):
+        session_store.save(snapshot(SID))
+        item = self.client.get("/api/sessions").get_json()["sessions"][0]
+
+        self.assertEqual(item["session_id"], SID)
+        self.assertEqual(item["role"], "AI 应用开发")
+        self.assertTrue(item["is_finished"])
+        self.assertEqual(item["rounds"], 2)
+        # ★ 认领靠的是这句，不是编号
+        self.assertIn("向量数据库", item["first_answer"])
+        # 列表项不该带整场对话
+        self.assertNotIn("messages", item)
+
+    def test_limit_is_clamped(self):
+        for query, expect in (("?limit=999", 100), ("?limit=abc", 20),
+                              ("?limit=0", 1), ("?limit=-5", 1)):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    self.client.get("/api/sessions" + query).get_json()["limit"], expect)
+
+    def test_corrupt_file_does_not_break_the_endpoint(self):
+        session_store.save(snapshot(SID))
+        with open(os.path.join(session_store.DATA_DIR, "broken.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("{ 半截")
+
+        r = self.client.get("/api/sessions")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([s["session_id"] for s in r.get_json()["sessions"]], [SID])
+
+    def test_list_does_not_touch_memory_sessions(self):
+        """列表只读磁盘 —— 正在进行的会话不该被它搅动。"""
+        cloud_app.session_manager.get_or_create_session(SID, "AI 应用开发")
+        before = len(cloud_app.session_manager.sessions)
+        self.client.get("/api/sessions")
+        self.assertEqual(len(cloud_app.session_manager.sessions), before)
+
+
+class TestHistoryPage(RouteTestCase):
+    def test_serves_the_same_html_as_the_display_page(self):
+        """列表页与展示页共用一个 HTML（前端按路径分支）—— 这个断言是那条约定的锁。"""
+        listing = self.client.get("/history")
+        display = self.client.get("/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.data, display.data)
+
+        page = listing.data.decode("utf-8")
+        self.assertIn('id="hist"', page, "列表容器不在")
+        self.assertIn('id="report"', page, "展示页的容器不在")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
