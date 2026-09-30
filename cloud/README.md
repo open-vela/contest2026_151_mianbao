@@ -15,7 +15,8 @@
 
 ```
 cloud/
-├── app.py                  # Flask 主程序（云端 API 入口）
+├── app.py                  # Flask 主程序（云端 API 入口：/api/interview、/api/health、
+│                           #   /api/history、/api/sessions、/api/export、/ 与 /history）
 ├── asr_service.py          # ASR 语音识别服务
 ├── tts_service.py          # TTS 语音合成服务
 ├── llm_service.py          # LLM 大语言模型服务（注入题库参考块）
@@ -29,7 +30,7 @@ cloud/
 ├── report_guard.py         # 报告闸门：报告里有没有「」原话引用（纯函数，见 3.8）
 ├── requirements.txt        # Python 依赖列表
 │
-├── static/index.html       # 对话展示页 + 报告卡片（只读，见 ../README.md 4.2.1）
+├── static/index.html       # 展示页 + 历史列表（同一个 HTML，按路径分支；只读，见 ../README.md 4.2.1）
 ├── data/sessions/          # 运行期落盘的会话 json（.gitignore，删掉不影响运行）
 │
 ├── test_services.py        # ASR/TTS 服务测试脚本（运行后在 cloud/ 下生成下面两个 wav）
