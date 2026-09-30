@@ -279,6 +279,34 @@ def history():
     return jsonify(snap)
 
 
+@app.route('/api/sessions', methods=['GET'])
+def sessions():
+    """历史场次列表（只读）。
+
+    公共设备上"我刚面完的那场"就是从这里认出来的 —— 网页的主路径是 `/`（直接显示
+    最近一场），这里是"看更早的"那条路。
+
+    `?limit=` 默认 20、**上限 100**：它是给人看的列表，不是导出接口。
+    """
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 100))
+    return jsonify({"sessions": session_store.list_summaries(limit), "limit": limit})
+
+
+@app.route('/history', methods=['GET'])
+def history_page():
+    """历史列表页。
+
+    与展示页**共用同一个 HTML 文件**（前端按 `location.pathname` 分支，见
+    static/index.html 的"视图模式"一段）—— 列表与详情九成的样式和工具函数都一样，
+    拆成两个文件迟早会出现两边不一致。
+    """
+    return app.send_static_file('index.html')
+
+
 @app.route('/api/export/<session_id>', methods=['GET'])
 def export_session(session_id):
     """把一场面试导出成可下载的文件：`?format=md`（默认）或 `?format=json`。

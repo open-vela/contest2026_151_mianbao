@@ -219,6 +219,52 @@
   }
   .badge.ok { background: #e8f8ee; color: #15803d; }
 
+  /* ---------- 顶栏的历史入口 ---------- */
+  .hlink {
+    font-size: 13px;
+    color: var(--brand);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: var(--brand-dim);
+    white-space: nowrap;
+  }
+  .hlink:hover { filter: brightness(0.96); }
+
+  /* ---------- 历史列表（/history） ---------- */
+  /* 列表项用整块可点（<a>），不用按钮 —— 手机上整块都比小按钮好点。 */
+  .sess {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 13px 16px;
+    margin-bottom: 10px;
+  }
+  .sess:hover { border-color: var(--brand); }
+  .sess-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sess-role { font-weight: 600; font-size: 14px; }
+  .sess-time { font-size: 12.5px; color: var(--ink-dim); }
+  .sess-meta { font-size: 12.5px; color: var(--ink-dim); margin-left: auto; }
+  .sess-score { color: var(--brand); font-weight: 600; }
+  /* 首句回答是"认出自己那场"的关键 —— 公共设备上一天有十个人用过，
+     时间只能定位到"大概"，得靠"我说过什么"来确认。 */
+  .sess-answer {
+    font-size: 13px;
+    color: var(--ink);
+    margin-top: 7px;
+    line-height: 1.5;
+    /* 最多两行，超了省略号 —— 列表项高度要整齐，扫起来才快 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .sess-new { font-size: 11.5px; color: #15803d; background: #e8f8ee;
+              border-radius: 6px; padding: 1px 6px; }
+
   /* ---------- 回到底部 ---------- */
   #jump {
     position: fixed;
@@ -251,6 +297,8 @@
   <span class="badge" id="roundBadge" style="display:none"></span>
   <span class="badge ok" id="doneBadge" style="display:none">已结束</span>
   <span class="spacer"></span>
+  <!-- 历史入口。文字与 href 由脚本按当前视图改写（列表页要变成"← 当前面试"） -->
+  <a class="hlink" id="histLink" href="/history">历史</a>
   <div class="status">
     <span class="dot" id="dot"></span>
     <span id="statusText">连接中…</span>
@@ -272,6 +320,14 @@
   <div class="wrap" id="report"></div>
 </main>
 
+<!-- 历史列表视图（/history）。
+     与上面那个 <main> 是**二选一显示**的：脚本按 location.pathname 决定露哪一个。
+     刻意不复用同一个容器 —— 两者的滚动、空态、轮询行为都不一样，
+     塞在一起只会让两边都变难读。 -->
+<main id="hist" style="display:none">
+  <div class="wrap" id="histWrap"></div>
+</main>
+
 <button id="jump">有新消息 ↓</button>
 
 <script>
@@ -289,6 +345,23 @@
   var elDone   = document.getElementById("doneBadge");
   var elReport = document.getElementById("report");
   var elJump   = document.getElementById("jump");
+  var elHist     = document.getElementById("hist");
+  var elHistWrap = document.getElementById("histWrap");
+  var elHistLink = document.getElementById("histLink");
+
+  // ---------- 视图模式 ----------
+  //
+  // 同一个 HTML 文件服务三个视图，靠**真实路径 + 查询串**区分：
+  //   /                  最近一场（默认，实时轮询）—— 公共设备的主路径：
+  //                      面完走过来打开网页，看到的就是刚那一场
+  //   /?session_id=xxx   指定某一场
+  //   /history           历史列表
+  //
+  // 不用前端路由（hash）而用真实路径：URL 能直接收藏/分享，刷新后停在原处 ——
+  // 对"贴在板子旁边的那张纸卡上的网址"来说，这点很重要。
+  var IS_LIST = /^\/history\/?$/.test(location.pathname);
+  var SID = "";
+  try { SID = new URLSearchParams(location.search).get("session_id") || ""; } catch (e) { SID = ""; }
 
   var lastKey     = null;  // 内容指纹：没变就整轮跳过，不做任何 DOM 操作
   var stickBottom = true;  // 用户往上翻时置 false，就不再强行拉回底部
@@ -475,7 +548,8 @@
   // ---------- 轮询 ----------
 
   function tick() {
-    fetch("/api/history", { cache: "no-store" })
+    fetch("/api/history" + (SID ? "?session_id=" + encodeURIComponent(SID) : ""),
+          { cache: "no-store" })
       .then(function (r) {
         if (!r.ok) { throw new Error("HTTP " + r.status); }
         return r.json();
@@ -521,8 +595,87 @@
     elJump.style.display = "none";
   });
 
-  tick();
-  setInterval(tick, POLL_MS);
+  // ---------- 历史列表（/history） ----------
+
+  function fmtTime(ts) {
+    if (!ts) { return ""; }
+    var d = new Date(ts * 1000);
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    var today = new Date();
+    if (d.toDateString() === today.toDateString()) { return "今天 " + hm; }
+    if (d.toDateString() === new Date(today.getTime() - 86400000).toDateString()) {
+      return "昨天 " + hm;
+    }
+    return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + hm;
+  }
+
+  function renderList(items) {
+    if (!items.length) {
+      elHistWrap.innerHTML =
+        '<div class="empty">' +
+          '<div class="big">📭</div>' +
+          '<h2>还没有面试记录</h2>' +
+          '<p>在开发板上按 <code>K1</code> 说一句话，这一场结束后就会出现在这里。</p>' +
+        '</div>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < items.length; i++) {
+      var s = items[i] || {};
+      html +=
+        '<a class="sess" href="/?session_id=' +
+            esc(encodeURIComponent(s.session_id || "")) + '">' +
+          '<div class="sess-top">' +
+            '<span class="sess-role">' + esc(s.role || "面试") + '</span>' +
+            '<span class="sess-time">' +
+              esc(fmtTime(s.updated_at || s.created_at || s.mtime)) + '</span>' +
+            '<span class="sess-meta">' + esc(s.rounds || 0) + ' 轮' +
+              (s.is_finished ? "" : ' · <span class="sess-new">进行中</span>') +
+              (typeof s.score_total === "number"
+                 ? ' · <span class="sess-score">' + esc(s.score_total) + ' 分</span>'
+                 : "") +
+            '</span>' +
+          '</div>' +
+          (s.first_answer
+             ? '<div class="sess-answer">' + esc(s.first_answer) + '</div>'
+             : "") +
+        '</a>';
+    }
+    elHistWrap.innerHTML = html;
+  }
+
+  function loadList() {
+    fetch("/api/sessions?limit=20", { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) { throw new Error("HTTP " + r.status); }
+        return r.json();
+      })
+      .then(function (d) {
+        setStatus("ok", "已连接");
+        renderList(d.sessions || []);
+      })
+      .catch(function (e) { setStatus("err", "连接中断（" + e.message + "）"); });
+  }
+
+  // ---------- 启动 ----------
+
+  if (IS_LIST) {
+    // 列表模式下不启动对话轮询：那个 tick 会去拉"最近一场"并渲染对话，
+    // 和列表抢同一个页面。两个视图二选一，是这里最省事也最不容易出错的划分。
+    elMain.style.display = "none";
+    elHist.style.display = "";
+    elHistLink.textContent = "← 当前面试";
+    elHistLink.href = "/";
+    loadList();
+    // 5 秒一次：别人刚面完，过来看列表的人应该能立刻看到它。
+    // 一次请求只是一次目录扫描（见 session_store.list_summaries 的注释）。
+    setInterval(loadList, 5000);
+  } else {
+    elHistLink.textContent = SID ? "← 历史" : "历史";
+    tick();
+    setInterval(tick, POLL_MS);
+  }
 })();
 </script>
 
