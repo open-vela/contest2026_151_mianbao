@@ -101,7 +101,12 @@ void cloud_init(void)
     snprintf(g_url_health, sizeof(g_url_health), "%s%s",
              base, CLOUD_PATH_HEALTH);
 
-    printf("[Cloud] 云端接口: %s\n", g_url_interview);
+    /* ⚠️ 这里**刻意不打印**云端地址（原来有一行 printf，已挪走）。
+     * cloud_init() 跑在**工作线程**里，而启动那几秒主线程正在刷 K1/K2/K3 的帮助
+     * 信息 —— NuttX 的 stdio 非线程安全，两边的输出会互相踩掉。实测这行地址打印
+     * 被吞过两次，而它恰恰是排查"到底用了哪个地址"时唯一的信息来源（台账 §11.28：
+     * 那次悬案最后只能改用阴性对照法才问出来）。
+     * 现在由主线程在启动工作线程**之前**打印，见 main.c 的 cloud_url_source()。 */
 
     g_initialized = 1;
 }

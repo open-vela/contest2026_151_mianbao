@@ -87,6 +87,12 @@ static system_state_t get_next_state(system_state_t current, system_event_t even
                 if (g_retry_count >= MAX_RETRY_COUNT) return STATE_IDLE;
                 return STATE_ERROR;
             }
+            /* 上传期间按 K2 取消 —— 与录音阶段用同一个事件（RECORDING 也是
+             * `--ERROR--> IDLE`），两条取消路径的行为因此完全一致。
+             * 少了这一条，从 UPLOADING 发 EVENT_ERROR 会被静默忽略、
+             * 状态机卡在上传态（这正是 §11.26 那次"按下取消却走完三次重试"
+             * 的另一半原因：标志置了、循环不看、事件也没人接）。 */
+            if (event == EVENT_ERROR) return STATE_IDLE;
             return current;
         case STATE_PLAYING:
             if (event == EVENT_PLAY_DONE) return STATE_IDLE;
