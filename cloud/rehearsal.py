@@ -2,7 +2,7 @@
 """PC 端面试排练 —— 不开板子，把云端整条链路跑满 11 轮并逐轮体检。
 
 用途：上板之前先在 PC 上把端云链路（ASR → LLM → TTS）完整走一遍，
-把"报告轮空返回""参考块泄漏""TTS 体积越界"这类问题在电脑上抓出来。
+把"报告轮空返回""参考块泄漏""TTS 体积越界""原样重问上一题"这类问题在电脑上抓出来。
 
 跑法（**需要 MIMO_API_KEY，会真打 LLM / ASR / TTS，要花钱**）：
 
@@ -54,6 +54,7 @@ import uuid
 import requests
 
 from finish_guard import match_reason
+from question_similarity import MAX_QUESTION_SIMILARITY, question_similarity
 from report_guard import has_quote
 from reply_guard import FALLBACK_QUESTION
 
@@ -413,6 +414,18 @@ def main() -> int:
                 fail(f"第 {number} 轮问句 {len(text)} 字，超过 {MAX_QUESTION_CHARS} 字（话痨复发？）")
         elif len(text) > MAX_REPORT_CHARS:
             fail(f"报告 {len(text)} 字，超过 {MAX_REPORT_CHARS} 字")
+
+        # 相邻两问不能几乎一样（阈值来历见 MAX_QUESTION_SIMILARITY）。
+        # rounds[-1] 是本轮（上面刚 append），所以上一轮是 rounds[-2]。
+        if (kind == "question" and len(rounds) >= 2
+                and rounds[-2]["type"] == "question"):
+            previous = rounds[-2]["text"]
+            similarity = question_similarity(previous, text)
+            if similarity > MAX_QUESTION_SIMILARITY:
+                fail(f"第 {number} 轮几乎重问了第 {number - 1} 轮"
+                     f"（相似度 {similarity:.2f} > {MAX_QUESTION_SIMILARITY}）："
+                     f"「{previous[:20]}…」→「{text[:20]}…」"
+                     f" —— 要追就换一种问法，或换话题")
 
         # 报告轮必须带「」原话引用 —— 提示词把这条写成了硬性要求（注明过「没有例外」），
         # 而 2026-09-30 的真机实测里它**失效了**（台账 §11.27 / §11.30）。
