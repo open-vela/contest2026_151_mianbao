@@ -347,12 +347,39 @@ class TestStageInjection(unittest.TestCase):
             with self.subTest(round=round_number):
                 self.assertIn(f"【当前阶段：{name}】", self.ask(round_number))
 
+    def has_block(self, round_number):
+        """这一轮**发给模型的任何一条消息**里有没有参考题。"""
+        return any(self.BLOCK_HEADER in m.get("content", "")
+                   for m in self.ask_kwargs(round_number)["messages"])
+
     def test_参考块只在技术段出现(self):
         """背景深挖问的是他自己的项目，题库帮不上忙 —— 注进去只会把话题拽走。"""
-        self.assertNotIn(self.BLOCK_HEADER, self.ask(1), "开场不该有参考题")
-        self.assertNotIn(self.BLOCK_HEADER, self.ask(2), "背景深挖不该有参考题")
-        self.assertIn(self.BLOCK_HEADER, self.ask(5), "技术问答段应当注入参考题")
-        self.assertNotIn(self.BLOCK_HEADER, self.ask(10), "反问环节不该有参考题")
+        self.assertFalse(self.has_block(1), "开场不该有参考题")
+        self.assertFalse(self.has_block(2), "背景深挖不该有参考题")
+        self.assertTrue(self.has_block(5), "技术问答段应当带上参考题")
+        self.assertFalse(self.has_block(10), "反问环节不该有参考题")
+
+    def test_参考块紧跟在阶段要求下面(self):
+        """★ 2026-10-01 改的（台账 §11.42）：**材料要跟着指令走**。
+
+        原先参考块只在 system prompt 里，而"换到通用技术题"这条指令在本轮 user 消息里
+        —— 模型读到指令时，参考题离它隔了整场对话。两跑实测都是"参考题在手上，却继续
+        问他的项目"。现在两者在同一条消息里，且参考块紧跟在指令**下面**。
+        """
+        last = self.ask_kwargs(5)["messages"][-1]["content"]
+        self.assertIn("换到通用技术题", last)
+        self.assertIn(self.BLOCK_HEADER, last)
+        self.assertLess(last.index("换到通用技术题"), last.index(self.BLOCK_HEADER),
+                        "参考块应当排在阶段要求的**下面**")
+
+    def test_参考块不再放进_system_prompt(self):
+        """放 system prompt 里离指令太远，就是上面那个问题的成因。
+
+        （§11.21 禁的是参考块进 **history** —— 那会变成"模型抄自己"的燃料。
+        system prompt 只是"太远"，history 才是"有毒"，两回事别混。）
+        """
+        self.assertNotIn(self.BLOCK_HEADER, self.ask(5),
+                         "参考块不该再放进 system prompt 了")
 
     def test_开场那一段明确说了不要再让他自我介绍(self):
         """真实数据里出现过：候选人一开口就自报家门，面试官却又让他"介绍一下自己"。

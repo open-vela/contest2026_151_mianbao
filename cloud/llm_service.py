@@ -159,9 +159,12 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     # ---- 题库参考块（见 cloud/question_bank.py 与台账 §11.21）----
     #
     # ⚠️ 三条纪律，改这里之前先读 cloud/question_bank.py 的 docstring：
-    #  1. 参考块**只进 system prompt，绝不进 history**，也不许用 assistant 消息承载 ——
+    #  1. 参考块**绝不进 history**，也不许用 assistant 消息承载 ——
     #     history 里出现参考题就是给模型递了它自己的范例，那正是 §11.20「模型抄自己」
     #     的燃料（自我强化、越写越长、且不会自愈）。
+    #     ⚠️ 但"放 system prompt 里"同样不对：它离"换到通用技术题"那条指令隔了整场对话，
+    #        模型拿到题也不用（2026-10-01 两跑实测）。现在它跟在本轮 user 消息里、紧贴
+    #        指令下面 —— **要求写在哪，材料就该在哪**。见 §11.42。
     #  2. 候选词用**候选人刚说的那段话**：他要接着答的内容就是选题方向。
     #  3. 岗位映射不到题库（例如仍是旧的「产品经理」默认值）、或题库缺失时，
     #     build_reference_block 返回 ""，提示词与没有题库时完全一致 —— 优雅退化为自由提问。
@@ -202,11 +205,10 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
         system_prompt = system_prompt.replace("{stage_block}", "")
 
     if reference_block:
-        # 台账 §11.22 留了个悬案：「参考块到底注进去了没有」。它只改 system prompt，
-        # 不进 history、不在回复里留痕，所以事后从任何输出都反推不出来 —— 只能当场记。
-        logger.info(f"[题库] 第 {round_number} 轮注入参考块：{len(reference_block)} 字"
+        # 台账 §11.22 留了个悬案：「参考块到底注进去了没有」。它不进 history、不在回复里
+        # 留痕，所以事后从任何输出都反推不出来 —— 只能当场记。
+        logger.info(f"[题库] 第 {round_number} 轮带上参考块：{len(reference_block)} 字"
                     f"（检索词 {len(last_answer)} 字）")
-        system_prompt = system_prompt.replace("{reference_block}", reference_block)
     else:
         # ⚠️ 这句日志要**分清两种"没有参考块"**：
         #    a) 这一段本来就不用（深挖/反问问的是他自己的经历）—— 正常；
@@ -218,12 +220,14 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
                         "候选人这轮说得太少）—— 退化为自由提问")
         else:
             name = stage_text.get("name") if stage_text else "无阶段"
-            logger.info(f"[题库] 第 {round_number} 轮（{name}）本就不注入参考块 "
+            logger.info(f"[题库] 第 {round_number} 轮（{name}）本就不带参考块 "
                         f"—— 这一段问的是他自己的经历")
-        # 空块要连占位符所在的那一行一起去掉，否则留下连续空行
-        system_prompt = system_prompt.replace("{reference_block}\n\n", "")
-        system_prompt = system_prompt.replace("{reference_block}", "")
-    # {role} 必须**最后**替换：它来自请求体，先替换的话值里若含 {reference_block}
+
+    # 兜底：万一提示词文件里还留着旧占位符（拷贝了旧版本），别让它原样进提示词
+    system_prompt = system_prompt.replace("{reference_block}\n\n", "")
+    system_prompt = system_prompt.replace("{reference_block}", "")
+
+    # {role} 必须**最后**替换：它来自请求体，先替换的话值里若含 {stage_block}
     # 之类的字样会被当成占位符二次替换。
     system_prompt = system_prompt.replace("{role}", role)
 
@@ -237,11 +241,21 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     #    这里是离"下一句要写什么"最近的位置 —— 2026-10-01 的排练证明：只写在 system
     #    prompt 里挡不住历史势头（前十轮都在追项目，模型就接着追，阶段说明形同虚设）。
     #    这是 brief 那一栏存在的全部理由。
-    hint = (f"\n\n【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}"
-            if stage_brief else "")
-    messages.append({"role": "user",
-                     "content": f"候选人回答：{last_answer}{hint}\n\n"
-                                f"请根据回答决定是追问还是提出新问题。"})
+    #
+    # ⚠️ 参考块也放在这里、**紧跟在阶段要求下面**（2026-10-01 改，台账 §11.42）。
+    #    原先它只在 system prompt 里，而"换到通用技术题"这条指令在本轮 user 消息里 ——
+    #    模型读到指令时，参考题离它隔了整场对话。两跑实测都是"参考题在手上却继续问
+    #    他的项目"。**要求写在哪，材料就该在哪。**
+    #
+    #    这不违反 §11.21 的纪律：那条禁的是参考块进 **history**（模型看见自己过去的
+    #    参考题、然后抄），而本轮 user 消息是每轮现拼的、不入库。
+    parts = [f"候选人回答：{last_answer}"]
+    if stage_brief:
+        parts.append(f"【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}")
+    if reference_block:
+        parts.append(reference_block)
+    parts.append("请根据回答决定是追问还是提出新问题。")
+    messages.append({"role": "user", "content": "\n\n".join(parts)})
 
     result = call_llm(
         system_prompt=system_prompt,
