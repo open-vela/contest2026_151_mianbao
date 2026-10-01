@@ -154,5 +154,72 @@ class TestStdlibOnly(unittest.TestCase):
                         f"report_guard 只该 import {self.ALLOWED}，实际 {imported}")
 
 
+class TestProblems(unittest.TestCase):
+    """报告合格判据。目前两项：有「」引用、不超长。"""
+
+    def test_合格的报告没有问题(self):
+        self.assertEqual(rg.problems(REAL_WITH_QUOTE), [])
+
+    def test_缺引用(self):
+        self.assertEqual(rg.problems(REAL_NO_QUOTE), ["no_quote"])
+
+    def test_超长(self):
+        long_report = "整体尚可。「好」，但" + "这里还有一句补充说明。" * 30
+        self.assertIn("too_long", rg.problems(long_report))
+        self.assertEqual(rg.problems(long_report), ["too_long"],
+                         "这份样本有引用，只该判超长")
+
+    def test_两种都不合格(self):
+        long_no_quote = REAL_NO_QUOTE + "另外我还想补充几点。" * 30
+        self.assertEqual(rg.problems(long_no_quote), ["no_quote", "too_long"])
+
+    def test_刚好到上限不算超(self):
+        """边界：**刚好到上限合格，多一个字就动手**。
+
+        补白长度由前缀长度算出来，别写死 —— 我第一版手算错了 3 个字
+        （`「引」` 是 3 个字不是 2 个），测试当场把我抓住。
+        """
+        prefix = "「引」"
+        exact = prefix + "字" * (rg.MAX_CHARS - len(prefix))
+        self.assertEqual(len(exact.strip()), rg.MAX_CHARS, "构造的样本长度不对")
+
+        self.assertEqual(rg.problems(exact), [], "刚好到上限不该判超长")
+        self.assertEqual(rg.problems(exact + "字"), ["too_long"], "多一个字就该动手")
+
+    def test_空与None(self):
+        for bad in ("", None, "   "):
+            with self.subTest(report=bad):
+                self.assertEqual(rg.problems(bad), ["no_quote"])
+
+
+class TestRetryHint(unittest.TestCase):
+    """按不合格的项拼纠偏指令 —— **一次重试里把所有问题一起说**，不叠加调用。"""
+
+    def test_没有问题时不拼东西(self):
+        self.assertEqual(rg.retry_hint([]), "")
+        self.assertEqual(rg.retry_hint(None), "")
+
+    def test_缺引用时给引用那条(self):
+        self.assertEqual(rg.retry_hint(["no_quote"]), rg.RETRY_HINT)
+
+    def test_超长时给长度那条(self):
+        self.assertEqual(rg.retry_hint(["too_long"]), rg.RETRY_HINT_TOO_LONG)
+
+    def test_两种都有时两条都给(self):
+        hint = rg.retry_hint(["no_quote", "too_long"])
+        self.assertIn("「」引用", hint)
+        self.assertIn("太长", hint)
+
+    def test_上限与rehearsal保持一致(self):
+        """⚠️ 两处阈值必须一样，否则会出现"闸门觉得合格、排练判不及格"这种自相矛盾。"""
+        import re
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rehearsal.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        found = re.search(r"^MAX_REPORT_CHARS\s*=\s*(\d+)", source, re.M)
+        self.assertIsNotNone(found, "rehearsal.py 里没找到 MAX_REPORT_CHARS")
+        self.assertEqual(rg.MAX_CHARS, int(found.group(1)))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -49,6 +49,45 @@ RETRY_HINT = (
     "其余要求（六句话、200 字以内、不要 Markdown、不写标题）都不变。"
 )
 
+# 超长的纠偏指令（2026-10-01 加，见台账 §11.41）。
+#
+# 那天一次排练里报告写到 296 字（前几跑都是 80~207）—— 提示词写着"200 字以内"，
+# 模型偶尔就是不听话。连带把 TTS 撑到 2.9MB、播了 27 秒，逼近端侧 8MB 响应上限。
+# 这正是 §11.21-3 那条"报告端没有闸门"的又一个实例。
+RETRY_HINT_TOO_LONG = (
+    "这份报告太长了，不符合要求。请重写一遍，压到 200 字以内。\n"
+    "⚠️ 六句话的结构不变（一句总评 + 四个维度各一句 + 一条改进建议），"
+    "但每一句都要更短 —— 这份报告是被 TTS 念出来的，太长会播很久。\n"
+    "其余要求（必须有一处「」引用、不要 Markdown、不写标题）都不变。"
+)
+
+# 报告长度上限。**与 rehearsal.py 的 MAX_REPORT_CHARS 保持一致**（250）。
+# 提示词要求的是 200 字，这里留 50 字余量：超一点点不值得多花一次调用，超多了才动手。
+MAX_CHARS = 250
+
+
+def problems(report) -> list:
+    """这份报告有哪些不合格的地方（空列表 = 合格）。
+
+    返回**键名**而不是句子 —— 调用方据此拼纠偏指令，也能直接写进日志。
+    """
+    items = []
+    if not has_quote(report):
+        items.append("no_quote")
+    if len((report or "").strip()) > MAX_CHARS:
+        items.append("too_long")
+    return items
+
+
+def retry_hint(items) -> str:
+    """按不合格的项拼一条纠偏指令 —— 一次重试里把所有问题一起说，不叠加调用。"""
+    hints = []
+    if "no_quote" in (items or []):
+        hints.append(RETRY_HINT)
+    if "too_long" in (items or []):
+        hints.append(RETRY_HINT_TOO_LONG)
+    return "\n\n".join(hints)
+
 
 def quoted_spans(report) -> list:
     """把报告里所有「」引用摘出来，按出现顺序返回。没有则返回空列表。"""

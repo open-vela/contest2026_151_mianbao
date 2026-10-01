@@ -82,6 +82,32 @@ class TestQuoteRetry(RetryTestCase):
         self.assertEqual(out["text"], NO_QUOTE, "宁可缺引用，也不要把好内容丢掉")
         self.assertEqual(out["next_action"], "finish")
 
+    def test_报告超长也会触发重试(self):
+        """2026-10-01 加：那次排练的报告写到 296 字（上限 250），提示词写着 200 也没用。
+        同 §11.21-3「报告端没有闸门」—— 现在长度也进闸门了。"""
+        too_long = WITH_QUOTE.replace("。", "，这里再多说一句。") * 12
+        self.assertIn("too_long", llm_service.report_guard.problems(too_long))
+
+        out, calls = self.run_feedback([too_long, WITH_QUOTE])
+        self.assertEqual(len(calls), 2, "超长必须补一次重试")
+        self.assertEqual(out["text"], WITH_QUOTE)
+        self.assertIn("太长", calls[1]["messages"][-1]["content"])
+
+    def test_重试后仍超长就照发(self):
+        """宁可要一份长的，也不要为了压字数把已经生成好的内容丢掉。"""
+        too_long = WITH_QUOTE.replace("。", "，这里再多说一句。") * 12
+        out, calls = self.run_feedback([too_long])
+        self.assertEqual(len(calls), 2, "只重试一次，不无限重试")
+        self.assertEqual(out["text"], too_long)
+
+    def test_两种问题一次重试里一起说(self):
+        """缺引用 + 超长 → **一次**重试，不是两次。"""
+        both = NO_QUOTE + "另外我还想补充几点说明。" * 30
+        out, calls = self.run_feedback([both, WITH_QUOTE])
+        self.assertEqual(len(calls), 2, "两种问题也只该补一次调用")
+        self.assertIn("「」引用", calls[1]["messages"][-1]["content"])
+        self.assertIn("太长", calls[1]["messages"][-1]["content"])
+
     def test_empty_llm_result_returns_fallback(self):
         """两次都空（LLM 调不通）→ 走原有的兜底文案。"""
         out, _ = self.run_feedback([""])

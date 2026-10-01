@@ -380,8 +380,10 @@ class TestStageInjection(unittest.TestCase):
         模型在技术段、反问段**都继续追项目**（参考题明明注进去了，245~278 字）。
         brief 就是为了占住"离下一句最近"的那个位置。
         """
+        # 断言的是**行为要求**（那几句是不能丢的保证），不是措辞本身 ——
+        # 措辞可以改，这几条要求改了就得回来改测试。
         for round_number, fragment in ((1, "不要再让他自我介绍"),
-                                       (5, "换到技术概念"),
+                                       (5, "不要只围着他那个项目问"),
                                        (10, "只问这一句")):
             with self.subTest(round=round_number):
                 last = self.ask_kwargs(round_number)["messages"][-1]["content"]
