@@ -351,25 +351,29 @@ def generate_feedback(role: str, history: list) -> dict:
     # 代码里拦。
     #
     # 只在**缺**的时候才多花一次调用：正常轮次（排练 11 轮全部命中过）成本为零。
-    if result and not report_guard.has_quote(result):
-        logger.warning("[报告] 首轮没有「」引用，补一次纠偏重试")
-        retried = call_llm(
-            system_prompt=system_prompt,
-            messages=messages + [
-                {"role": "assistant", "content": result},
-                {"role": "user", "content": report_guard.RETRY_HINT},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        if retried and report_guard.has_quote(retried):
-            logger.info("[报告] 重试后拿到了「」引用")
-            result = retried
-        else:
-            # 重试仍不合格 → **照发**，只记日志。
-            # 宁可用一份缺引用的报告，也不要为了凑格式把已经生成好的内容丢掉、
-            # 或者机械拼一句引用上去 —— 那份报告本身是好的，缺的只是格式要求。
-            logger.warning("[报告] 重试后仍无「」引用，按原样返回（不拦）")
+    if result:
+        found = report_guard.problems(result)
+        if found:
+            # 一次重试里把所有问题一起说（不叠加调用）。目前两项：没有「」引用 / 超长。
+            logger.warning("[报告] 首轮不合格（%s），补一次纠偏重试", "、".join(found))
+            retried = call_llm(
+                system_prompt=system_prompt,
+                messages=messages + [
+                    {"role": "assistant", "content": result},
+                    {"role": "user", "content": report_guard.retry_hint(found)},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            if retried and not report_guard.problems(retried):
+                logger.info("[报告] 重试后合格了")
+                result = retried
+            else:
+                # 重试仍不合格 → **照发**，只记日志。
+                # 宁可用一份有小毛病的报告，也不要为了凑格式把已经生成好的内容丢掉、
+                # 或者机械改写一遍 —— 那份报告本身是好的，缺的只是格式要求。
+                logger.warning("[报告] 重试后仍不合格（%s），按原样返回（不拦）",
+                               "、".join(report_guard.problems(retried) or ["重试返回为空"]))
 
     # 软核对：引用的话是不是真出自候选人。**只记日志**——提示词允许"摘关键词
     # 连起来"，那种引用本来就不是连续原文，拿它当判据会大面积误报。
