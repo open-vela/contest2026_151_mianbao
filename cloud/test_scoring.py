@@ -342,8 +342,8 @@ class TestStageInjection(unittest.TestCase):
 
     def test_每轮注入的是它那一段(self):
         for round_number, name in ((1, "开场"), (2, "背景深挖"),
-                                   (3, "背景深挖"), (5, "技术问答"),
-                                   (9, "技术问答"), (10, "反问环节")):
+                                   (3, "背景深挖"), (5, "技术追问"),
+                                   (9, "技术追问"), (10, "反问环节")):
             with self.subTest(round=round_number):
                 self.assertIn(f"【当前阶段：{name}】", self.ask(round_number))
 
@@ -356,7 +356,7 @@ class TestStageInjection(unittest.TestCase):
         """背景深挖问的是他自己的项目，题库帮不上忙 —— 注进去只会把话题拽走。"""
         self.assertFalse(self.has_block(1), "开场不该有参考题")
         self.assertFalse(self.has_block(2), "背景深挖不该有参考题")
-        self.assertTrue(self.has_block(5), "技术问答段应当带上参考题")
+        self.assertTrue(self.has_block(5), "技术追问段应当带上参考题")
         self.assertFalse(self.has_block(10), "反问环节不该有参考题")
 
     def test_参考块紧跟在阶段要求下面(self):
@@ -367,9 +367,9 @@ class TestStageInjection(unittest.TestCase):
         问他的项目"。现在两者在同一条消息里，且参考块紧跟在指令**下面**。
         """
         last = self.ask_kwargs(5)["messages"][-1]["content"]
-        self.assertIn("换到通用技术题", last)
+        self.assertIn("技术追问", last)
         self.assertIn(self.BLOCK_HEADER, last)
-        self.assertLess(last.index("换到通用技术题"), last.index(self.BLOCK_HEADER),
+        self.assertLess(last.index("技术追问"), last.index(self.BLOCK_HEADER),
                         "参考块应当排在阶段要求的**下面**")
 
     def test_参考块不再放进_system_prompt(self):
@@ -410,7 +410,7 @@ class TestStageInjection(unittest.TestCase):
         # 断言的是**行为要求**（那几句是不能丢的保证），不是措辞本身 ——
         # 措辞可以改，这几条要求改了就得回来改测试。
         for round_number, fragment in ((1, "不要再让他自我介绍"),
-                                       (5, "不要只围着他那个项目问"),
+                                       (5, "技术追问"),
                                        (10, "只问这一句")):
             with self.subTest(round=round_number):
                 last = self.ask_kwargs(round_number)["messages"][-1]["content"]

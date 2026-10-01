@@ -69,7 +69,7 @@ class TestStagePlan(unittest.TestCase):
 
 
 class TestQuestionBankUsage(unittest.TestCase):
-    def test_只有技术问答那一段用题库(self):
+    def test_只有技术追问那一段用题库(self):
         """背景深挖问的是他自己的项目，题库帮不上忙；注进去只会把话题从他自己的
         经历上拽走（顺带每轮省下两百多字提示词）。"""
         for key, _, _ in interview_stage.STAGE_PLAN:
