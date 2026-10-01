@@ -179,7 +179,7 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     stage = interview_stage.stage_key(round_number)
 
     # ---- 题库参考块 ----
-    # ⚠️ **只在技术问答那一段取**：背景深挖问的是他自己的项目，题库帮不上忙，
+    # ⚠️ **只在技术追问那一段取**：背景深挖问的是他自己的项目，题库帮不上忙，
     #    注进去只会把话题从他自己的经历上拽走（顺带每轮省下两百多字提示词）。
     asked_text = " ".join(m.get("content", "") for m in history if m.get("role") == "assistant")
     reference_block = ""
