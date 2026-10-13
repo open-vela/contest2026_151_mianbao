@@ -40,3 +40,30 @@ def question_similarity(previous, current) -> float:
     if not first or not second:
         return 0.0
     return len(first & second) / min(len(first), len(second))
+
+
+# 首轮生成的问题与上一问几乎一样时，追加给模型的纠偏指令（机制同 report_guard.RETRY_HINT：
+# 把原回复作为 assistant 消息带上、这条作为下一条 user 消息，只重试一次）。
+#
+# 来历（2026-10-13）：五个岗位各跑一轮排练，Data Analyst 那跑的第 9 问把第 8 问
+# 重说了一遍（相似度 0.84，候选人刚答非所问）—— §11.43 的提示词修复**减少但没根除**
+# 这个行为。同 §11.21/§11.30 的结论：提示词是"劝"，拦不住的要在代码里拦。
+#
+# ⚠️ 指令必须给出**两条出路**（换问法 / 换话题）。只说"不要重复"没有给出路，
+#    模型会在原地打转 —— 同 report_guard 把"摘关键词连起来"那个逃生口再指一次的取舍。
+RETRY_HINT = (
+    "你刚写的这一问和上一轮几乎一样，候选人刚答完就被问同一道题，听起来像没在听。"
+    "请重写这一问：\n"
+    "⚠️ 两条路选一条 —— ① 换一种问法（更具体、给个例子、缩小范围）；"
+    "② 直接换下一个话题。\n"
+    "只输出你要对候选人说的那句话（1~3 句，以一个问题结尾）。"
+)
+
+
+def is_repeat(previous, current) -> bool:
+    """`current` 是不是在几乎原样重问 `previous` —— 闸门的硬判据。
+
+    阈值与排练判据共用 `MAX_QUESTION_SIMILARITY`：**闸门放行的，排练才认**；
+    两边各定一套，就会出现"拦了但排练说没问题"或反过来的漂移。
+    """
+    return question_similarity(previous, current) > MAX_QUESTION_SIMILARITY

@@ -8,6 +8,7 @@
 * `NORMAL_PAIRS` 是同一次排练里正常推进的三对（实测 0.00~0.13）—— 必须一个
   都不误伤。只测「拦得住」不测「不误伤」，阈值往后就会悄悄开始乱报。
 """
+import os
 import unittest
 
 import question_similarity as qs
@@ -55,6 +56,35 @@ class TestQuestionSimilarity(unittest.TestCase):
     def test_punctuation_only_is_zero(self):
         """只剩标点就没什么可比 —— 0.0，不是崩溃，也不是 1.0。"""
         self.assertEqual(qs.question_similarity("，。？", "？！，。"), 0.0)
+
+
+class TestRepeatGuard(unittest.TestCase):
+    """闸门的判据与纠偏指令（`is_repeat` / `RETRY_HINT`）—— 2026-10-13 加，台账 §11.45。"""
+
+    def test_原样重问判为重问(self):
+        self.assertTrue(qs.is_repeat(REPEAT_A, REPEAT_B))
+
+    def test_正常推进不算重问(self):
+        for first, second in NORMAL_PAIRS:
+            with self.subTest(question=second[:16]):
+                self.assertFalse(qs.is_repeat(first, second))
+
+    def test_纠偏指令给出两条出路(self):
+        """⚠️ 只说"不要重复"没有给出路，模型会在原地打转 —— 指令必须**两条路都指**：
+        换一种问法 / 换下一个话题（同 report_guard 把"摘关键词连起来"那个逃生口
+        再指一次的取舍）。"""
+        self.assertIn("换一种问法", qs.RETRY_HINT)
+        self.assertIn("换下一个话题", qs.RETRY_HINT)
+
+    def test_排练用的是本模块的阈值(self):
+        """⚠️ 两处阈值必须是**同一个**：rehearsal.py 直接 import 这里的常量，而不是
+        自己再写一个数字。两套阈值一漂移，就会出现"闸门放行了、排练判不及格"（或
+        反过来）这种自相矛盾 —— 同 report 那道长度闸的对账（test_report_guard）。"""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rehearsal.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertIn("from question_similarity import MAX_QUESTION_SIMILARITY", source,
+                      "rehearsal 应当 import 本模块的阈值 —— 查一下它是不是自己写了一个数字")
 
 
 if __name__ == "__main__":

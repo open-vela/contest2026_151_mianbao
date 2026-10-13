@@ -11,6 +11,7 @@ from finish_guard import match_reason
 from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
 import interview_stage
+import question_similarity
 import report_guard
 import score_guard
 
@@ -204,6 +205,22 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
         system_prompt = system_prompt.replace("{stage_block}\n\n", "")
         system_prompt = system_prompt.replace("{stage_block}", "")
 
+    # ---- 岗位关注角度（2026-10-13 加，见台账 §11.45）----
+    # 五个岗位各跑一轮排练暴露的问题：换岗位**不改变追问方向** —— 按 B 方向（§11.42），
+    # 追问优先贴候选人的项目，岗位只影响"没得追时的参考题池"，于是同一份剧本下五个
+    # 岗位的面试看起来一模一样（实测：跨岗位的相似度 ≈ 同岗位重跑的相似度）。
+    # 这一段把岗位从"只换题库"抬成"也换追问角度"。
+    #
+    # 只在技术追问段注入：背景深挖问的是他的基本功（职责/数字/选型），加岗位角度只会
+    # 把话题拽窄；开场与反问与岗位无关。对不上（未知岗位）时不注入 —— 同参考块的优雅退化。
+    role_focus = ""
+    if stage == "technical":
+        role_focus = ((skill.get("role_focus") or {}).get(role) or "").strip()
+        if role_focus:
+            logger.info(f"[岗位] 第 {round_number} 轮带上「{role}」的关注角度")
+        else:
+            logger.info(f"[岗位] 「{role}」没配关注角度 —— 退化为纯贴项目的追问")
+
     if reference_block:
         # 台账 §11.22 留了个悬案：「参考块到底注进去了没有」。它不进 history、不在回复里
         # 留痕，所以事后从任何输出都反推不出来 —— 只能当场记。
@@ -252,6 +269,10 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     parts = [f"候选人回答：{last_answer}"]
     if stage_brief:
         parts.append(f"【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}")
+    if role_focus:
+        # 岗位角度也是"要求"，跟 brief 放一起；参考块（材料）跟在这两者**下面** ——
+        # 要求写在哪，材料就在哪（§11.42）。
+        parts.append(f"【本岗位关注的角度】{role_focus}追问仍贴着他的项目，只是优先从这些角度切。")
     if reference_block:
         parts.append(reference_block)
     parts.append("请根据回答决定是追问还是提出新问题。")
@@ -283,6 +304,43 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
         if stage == "ask_back" and not interview_stage.is_ask_back(cleaned):
             logger.warning("[节奏] 反问环节没问出「想问」—— 换成固定问句：%r", cleaned[:60])
             cleaned = interview_stage.ASK_BACK_FALLBACK
+
+        # ---- 重问闸（2026-10-13 加，见台账 §11.45）----
+        # 判据：本问与**上一问**的相似度（question_similarity），红线与排练共用同一个
+        # 常量 —— 闸门放行的，排练才认。超线就带纠偏指令补一次重试（机制同 report_guard：
+        # 原回复作为 assistant 消息带上、纠偏作为下一条 user 消息，只重试一次）。
+        #
+        # 来历：五岗排练里 Data Analyst 那跑第 9 问把第 8 问重说了一遍（相似度 0.84）。
+        # 提示词里"换一种问法"那条修复**减少但没根除** —— 提示词是劝，拦不住的在这里拦。
+        previous_question = ""
+        for message in reversed(history or []):
+            if isinstance(message, dict) and message.get("role") == "assistant":
+                previous_question = (message.get("content") or "").strip()
+                break
+        if previous_question and question_similarity.is_repeat(previous_question, cleaned):
+            similarity = question_similarity.question_similarity(previous_question, cleaned)
+            logger.warning("[重问] 第 %d 轮与上一问相似度 %.2f，补一次纠偏重试", round_number, similarity)
+            retried = call_llm(
+                system_prompt=system_prompt,
+                messages=messages + [
+                    {"role": "assistant", "content": cleaned},
+                    {"role": "user", "content": question_similarity.RETRY_HINT},
+                ],
+                temperature=skill.get("temperature", 0.7),
+                max_tokens=skill.get("max_tokens", 800)
+            )
+            retried_cleaned = strip_meta(retried) if retried else ""
+            if retried_cleaned and not question_similarity.is_repeat(previous_question, retried_cleaned):
+                # 重试结果也要过反问兜底 —— 两道闸只守一条路是假防线。
+                if stage == "ask_back" and not interview_stage.is_ask_back(retried_cleaned):
+                    retried_cleaned = interview_stage.ASK_BACK_FALLBACK
+                logger.info("[重问] 重试后合格（相似度 %.2f）",
+                            question_similarity.question_similarity(previous_question, retried_cleaned))
+                cleaned = retried_cleaned
+            else:
+                # 重试仍不合格 → **照发原文**，不卡主链路（同 report_guard 的取舍：
+                # 宁可要一句稍重的追问，也不要让这一轮空掉）。
+                logger.warning("[重问] 重试后仍相似（或为空），按原样返回（不拦）")
 
         return {"text": cleaned, "next_action": next_action}
     else:

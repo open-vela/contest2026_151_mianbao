@@ -313,5 +313,30 @@ class TestRotationCoverage(unittest.TestCase):
             self.assertLessEqual(len(line), qb.MAX_BLOCK_CHARS)
 
 
+class TestRoleFocusCoverage(unittest.TestCase):
+    """追问角度 ↔ 题库岗位的双向对账（2026-10-13 加，台账 §11.45）。
+
+    漏一个岗位的后果是**静默**的：那个岗位的面试会退化成"只换题库、不换追问角度" ——
+    不报错、不失败，只有把几个岗位对着看才发现（这正是这次发现它的方式）。
+    """
+
+    @staticmethod
+    def _focus():
+        path = pathlib.Path(__file__).resolve().parent.parent / "skills" / "next_question.json"
+        skill = json.loads(path.read_text(encoding="utf-8"))
+        return skill.get("role_focus") or {}
+
+    def test_每个题库岗位都有追问角度(self):
+        focus = self._focus()
+        self.assertEqual(set(focus), set(ALL_ROLES),
+                         "role_focus 的键必须与题库岗位一一对应（多了少了都是漂移）")
+
+    def test_角度不是空话(self):
+        for role, text in self._focus().items():
+            with self.subTest(role=role):
+                self.assertGreaterEqual(len(text.strip()), 20,
+                                        f"{role} 的关注角度太短，等于没给")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
