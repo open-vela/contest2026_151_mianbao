@@ -2621,3 +2621,13 @@ git rebase --onto 9cdb5cd 39452b7 dev-ai-contest-2026  # 40 个提交接到官�
 本机 git 走 `http.proxy=127.0.0.1:7897`（代理没开时全部失败）；代理关着时可以用
 `git -c http.proxy= -c https.proxy= ...` 直连，但**不稳定**（同一天里成功两次、
 之后连续被 reset）。要推拉先确认代理开着。
+
+#### PR #17 合并与再对齐（2026-10-13 下午）
+
+* 用户合并 PR #17（**又是 rebase-merge**）：官方前进到 `9cfbb5e`，42 个提交全部换新 SHA
+* 判定照旧：官方 `9cfbb5e` 的 tree `053094e` 与本机 `a98c321` 的 tree **逐字节相同**，
+  `git diff a98c321 9cfbb5e` 为空 —— 没有内容损失，`reset --hard` 即安全
+* 对齐：`git reset --hard upstream/dev-ai-contest-2026` → fork `--force-with-lease`
+  （`a98c321...9cfbb5e forced update`）→ **三方一致（本机 = fork = 官方 = `9cfbb5e`）**
+* 顺带：本机补配了 `upstream` remote（指向官方仓）—— 此前一直缺，每次靠 URL 硬拉；
+  台账 §11.16 写的那句 `git reset --hard upstream/...` 现在才是真能照着跑
