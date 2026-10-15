@@ -23,6 +23,17 @@ DIRTY_LABEL_ONLY = "追问细节：\n\n您提到在企业服务公司做了五�
 # 全是元叙述、一个问题都没有
 DIRTY_NO_QUESTION = "判断：追问细节\n\n---\n\n理由：\n\n候选人的回答非常简短且缺乏细节。"
 
+# 2026-10-15 真机会话里抓到的（台账 §11.48）：模型把内部标签「参考方向：」连同改写后的
+# 参考题一起写进了正文 —— 而这段是要被 TTS 念给候选人听的。逐字录入。
+DIRTY_REFERENCE_LABEL = (
+    "您刚才提到阈值是按业务成本在真实分布的验证集上选的，那这个成本矩阵具体怎么定的？"
+    "比如把一个正常用户误拦造成的损失和放走一个欺诈订单的损失，这两个数是您拍的还是"
+    "业务给的，取值变化对最终通过率影响有多大？\n\n"
+    "参考方向：如果让您在不平衡数据上训练一个分类模型，除了负采样加先验修正这条您"
+    "已经走过的路，还有哪些不改变样本分布的做法可以直接缓解正样本信号被压住的问题？"
+    "它们和负采样相比，代价分别是什么？"
+)
+
 # 211 字那条（2026-09-18 从真实链路抓的原始输出，逐字录入）：
 # 判断块 + 理由块 + 「新问题：」+ Markdown 引用块 + 「下一步：」。
 # 它同时考验标签剥离、引用块去壳，以及"两句相关问话要一起留下"。
@@ -115,6 +126,18 @@ class TestDirtyOutputIsCleaned(unittest.TestCase):
         out = strip_meta("判断：需要追问 你刚才提到按标题切分，能说说跨章节的内容怎么办吗？")
         self.assertTrue(out.endswith("？"))
         self.assertNotIn("判断", out)
+
+    def test_reference_label_is_stripped_question_kept(self):
+        """2026-10-15 真机：模型把「参考方向：」这个内部标签念了出来（台账 §11.48）。
+
+        标签要剥掉、**问句要留下**（那块本身是个像样的追问，只是被贴了标签）——
+        同「标签与问句写在同一行」的取舍。
+        """
+        out = strip_meta(DIRTY_REFERENCE_LABEL)
+        self.assertNotIn("参考方向", out, "内部标签绝不能出现在要被念出来的文本里")
+        self.assertIn("成本矩阵", out, "第一块（无标签）应完整保留")
+        self.assertIn("负采样", out, "被贴标签的那块，问句本身要留下")
+        self.assertTrue(out.rstrip().endswith("？"))
 
 
 class TestInvariants(unittest.TestCase):
