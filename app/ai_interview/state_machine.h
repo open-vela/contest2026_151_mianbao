@@ -46,4 +46,8 @@ void led_set(led_color_t color, led_mode_t mode);
 int state_machine_is_busy(void);
 void state_machine_update_led(void);
 
+/* 一次性"确认闪"：LED1 亮灭各 `times` 次后自动交还给状态图案（K3 换岗位的反馈）。
+ * ⚠️ 只有主线程可以调用 —— 同本文件其它接口（见 main.c 顶部的线程模型注释）。 */
+void state_machine_flash(int times);
+
 #endif /* __STATE_MACHINE_H__ */

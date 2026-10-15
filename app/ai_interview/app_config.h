@@ -179,7 +179,8 @@ static inline unsigned int app_max_record_seconds(void)
     return CONFIG_APP_AI_INTERVIEW_MAX_RECORD_SECONDS;
 }
 
-/* 面试官角色。演示时换个岗位只需 set ROLE，不必重烧。 */
+/* 面试官角色。`set ROLE` 可覆盖 —— ⚠️ 岗位名带空格，NSH 的 set 会把它切碎
+ * （见 Kconfig 里那条警告）；板上换岗位用 K3，见 main.c 的 g_role_idx。 */
 static inline const char *app_role(void)
 {
     const char *env = getenv("ROLE");
@@ -189,6 +190,50 @@ static inline const char *app_role(void)
     }
 
     return CONFIG_APP_AI_INTERVIEW_ROLE;
+}
+
+/* ---- 内置岗位表（K3 循环切换用）----
+ *
+ * ⚠️ 六个名字必须与云端题库的 role **一字不差**（cloud/question_bank.py 的
+ * ROLE_ALIASES），并与网页 /text 的岗位下拉一致 —— 对不上时云端**不报错**，
+ * 只会静默退化成"没有参考题的自由提问"。顺序也跟题库/网页一致，K3 按序循环。
+ *
+ * 为什么不用 `set ROLE` 换岗位：NSH 的 set 按空白分词，"AI 应用开发" 传到进程
+ * 里只剩 "AI"（Kconfig 里记着这个坑）。K3 走本地表，不受分词影响。
+ */
+#define APP_ROLE_COUNT 6
+
+static inline const char *app_role_at(int index)
+{
+    static const char *const roles[APP_ROLE_COUNT] = {
+        "AI 应用开发",
+        "AI Agent 开发",
+        "大模型算法工程师",
+        "AI/ML Engineer",
+        "Data Scientist",
+        "Data Analyst",
+    };
+
+    if (index < 0 || index >= APP_ROLE_COUNT) {
+        return NULL;
+    }
+    return roles[index];
+}
+
+/* 岗位名 → 下标；不在表里返回 -1（例如 ROLE 环境变量给的是自定义值）。 */
+static inline int app_role_index(const char *role)
+{
+    int i;
+
+    if (role == NULL) {
+        return -1;
+    }
+    for (i = 0; i < APP_ROLE_COUNT; i++) {
+        if (strcmp(role, app_role_at(i)) == 0) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 /* ---- 流水线工作线程栈大小 ----
