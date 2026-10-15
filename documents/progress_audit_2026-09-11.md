@@ -2684,3 +2684,66 @@ assistant 消息）比相似度（`question_similarity.is_repeat`，**红线与�
   分化在"角度"不在"话题"，字符相似度对此不敏感，逐句读才是判据
 * 顺带观察到一次教科书式的答非所问处理（AI Agent 跑第 9 问）：「我刚才问的是评测
   思路怎么调整，您先说了团队分工，我想还是回到评测本身…」—— 换角度重返，不重复
+
+---
+
+### 11.46 从 Windows 直连虚拟机：SSH 通道 + clone 对齐（2026-10-15）
+
+**起因**：用户问"能不能直接 SSH 进 VM 看内容"。探明：VM 开着（`vmrun list`）、22 端口通、
+本机有 OpenSSH —— 差一把钥匙。
+
+**打通**：用密码通道（`SSH_ASKPASS` 喂密码，密码就写在虚拟机自己的 SSH banner 里）装了
+一把**专用免密钥匙** `~/.ssh/id_ed25519_vm`（用户原来那把 `id_ed25519` 带密码保护、又没跑
+agent，BatchMode 用不了 —— **没动它**），并写进 `~/.ssh/config` 的 `Host 192.168.93.141`
+块。装钥匙用的临时密码文件已删。**从此 `ssh 192.168.93.141` 直接进。**
+
+**顺手对齐 VM 里的 clone**：fetch 后发现它在旧谱系（`9a7ef55`），落后 18/47 —— 按
+§11.16 老规矩比对 tree（本地 `f15d878` 在新谱系里对应 `f5a9006`，零内容损失）→
+`git reset --hard openvela/dev-ai-contest-2026` → `e7d10cb`，tracking 也设好了。
+（改动见 §11.44 的同款流程；VM 里那份从此不再靠"手工搬补丁"往前爬。）
+
+**编译流程的实情**（重要，与 README 不同）：
+* README §4.3 写的 `./build.sh vendor/allwinnertech/boards/r528/...` 是给**完整 sync 的
+  评委工作区**的路径；本机 `~/openvela_contest` 没有 `vendor/allwinnertech`（台账 §10.6
+  记过 sync 不完整）。
+* 这台 VM 真正的编译树是 **`~/vela-opensource`**，走 lichee 流程（project_status §6.4）：
+  ```
+  cd ~/vela-opensource/vendor/allwinnertech/lichee
+  source vela_env.sh && source envsetup.sh
+  lunch_nuttx r528s3-velaevb1     # 带参数可免交互（菜单里就这名字）
+  m                               # 内部就是 $ROOT_PATH/build.sh ... -j32 + strip/objcopy
+  pack                            # 出镜像
+  ```
+* 应用经软链进编译树：`~/vela-opensource/packages/demos/contest2026_151_ai_interview →
+  ~/openvela_contest/contest2026_151_mianbao/app/ai_interview` —— **clone 一拉，编译树即新**。
+* ⚠️ `pack` 会以 **1** 退出，并报 `boot0 checksum fail` 与缺 `ap.fex` / `res` 数据 ——
+  这是 **vendor 树的老毛病**，镜像照常产出。判据不是退出码，而是"产物在、且能搜到新代码
+  的字符串"（见 §11.47 的验证）。
+
+### 11.47 K3 换岗位：板上直接切换题库那 6 个岗位（2026-10-15，编译通过，**待烧录验证**）
+
+**语义**（问过用户后定的两条）：
+* 反馈：**串口日志 + LED1 快闪两下**（不做语音播报）；
+* **只在两场面试之间可切**：进行中（一轮没跑完）或本场未结束（`g_session_id` 非空）时
+  按 K3 只提示不切。原因不是偷懒 —— 云端**出题按请求里的 role、报告 / 评分 / 导出按建
+  会话时的 role**（`app.py` 的 `get_or_create_session` 与 `llm_interview` 调用点），
+  中途换会让一场面试出现两种岗位。
+
+**改动**：
+| 文件 | 内容 |
+|---|---|
+| `app_config.h` | 6 个岗位名的内置表 + `app_role_at/index`（与题库、网页一字不差） |
+| `main.c` | `g_role_idx` / `current_role()`；`upload_once` 改用 `current_role()`；K3 下降沿切换 + 三种提示；help 文案 |
+| `state_machine` | `state_machine_flash()`：一次性确认闪，闪完自动交还状态图案 |
+| 文档 | README ×2、cloud/README、Kconfig —— "板子的岗位编译进固件、换要重烧"的说法**作废** |
+
+**编译验证**（在 VM 里，见 §11.46 的流程）：
+* `M_EXIT=0`；新字符串在 `nuttx.bin` 与可烧录的 `.img` 里**都搜得到**（`岗位切换为`、
+  `AI Agent 开发`）—— 这是"代码真的编进去了"的直接证据，不靠退出码。
+* 镜像已拉回 Windows：`D:\面包包\firmware\rtos_nuttx_r528s3-velaevb1_uart0_256Mnand.img`，
+  两端 sha256 一致（`77b83122…254f`）。
+* 这一个镜像**同时带上端侧第二批**（K2 上传期间真取消 + 地址打印挪主线程，§11.29 的
+  "待重烧"）—— 烧一次，两件一起验。
+
+**待办**：PhoenixSuit 烧录 + 真机验证（K3 循环切换、确认闪、串口日志、下一场用新岗位；
+顺带把 §11.29 那两条也一起验了）。
