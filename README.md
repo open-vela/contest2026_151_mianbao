@@ -318,6 +318,17 @@ grep -E "CONFIG_AUDIO=|CONFIG_AW_AUDIO_DMIC=|CONFIG_SND_PLATFORM_SUNXI_DMIC=|CON
   vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/defconfig
 ```
 
+**屏幕界面（2026-10-16 起）还依赖这几项** —— 少一个，屏相关的编不出来或一跑就崩：
+
+```bash
+grep -E "CONFIG_GRAPHICS_LVGL=|CONFIG_LV_USE_FREETYPE=|CONFIG_LV_USE_FS_POSIX=|CONFIG_LCD_SUPPORT_TFT08006=|CONFIG_APP_AI_INTERVIEW_STACKSIZE=" \
+  vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/defconfig
+```
+
+> ⚠️ `CONFIG_APP_AI_INTERVIEW_STACKSIZE` 必须是 **327680**：主任务里跑着 LVGL，
+> 旧的 8192 会在建界面时栈溢出崩溃（这一项在板级 defconfig 里，**不在本仓** ——
+> 全新工作区如果继承到旧值，先改过来再编译；详见台账 §11.49）。
+
 以上各项都应为 `=y`。板级配置随 manifest 中的 `vendor/allwinnertech` 工程一并拉取；本作品的应用开关 `CONFIG_APP_AI_INTERVIEW` 在 `app/ai_interview/Kconfig` 里 `default y`，只要软链到位就会编进去。
 
 ### 4.4 烧录

@@ -2807,3 +2807,52 @@ agent，BatchMode 用不了 —— **没动它**），并写进 `~/.ssh/config` 
 
 **教训**：真机会话是排练覆盖不到的第二道网 —— 这条 leak 不在任何排练判据里，是
 **逐句读真实输出**读出来的（同 §11.33：验收标准只能是"人看到了"）。
+
+---
+
+### 11.49 面试官屏幕界面（LVGL）：待机页 / 面试中页 / 岗位可视化（2026-10-16，编译通过，**待烧录验证**）
+
+**起因**：用户想起板子上装着 8 寸触摸屏、之前做过打地鼠（`apps/examples/MyWhackMole`）。
+先把它读懂 —— **这块是复用，不是新造**：
+
+* 图形栈 LVGL v9 + NuttX 移植层**本来就在固件里全开**：`GRAPHICS_LVGL=y`、32 位色、
+  G2D 硬件加速、面板 `TFT08006`、framebuffer `/dev/lcd0`、触摸 `/dev/input0`；
+* 入口套路：`lv_init` → `lv_nuttx_dsc_init`（fb_path/input_path）→ `lv_nuttx_init`
+  → 建界面 → 主循环 `lv_timer_handler()`；
+* 素材在板子 `/data/res/`（字体 MiSans ttf 走 FreeType、图标 .bin、音效 `aplay`）——
+  因为 `LV_USE_FS_POSIX=y`、`LV_USE_FREETYPE=y`；
+* 编译注册四件套：Kconfig + Make.defs + Makefile + CMakeLists（与本 App 同一套）。
+
+#### 本版做了什么（用户点的三样）
+
+| 件 | 内容 |
+|---|---|
+| `interview_ui.c/.h`（新） | 两页：**待机页**（产品名 + 当前岗位 + 「按 K1 开始面试」/「按 K3 切换岗位」）、**面试中页**（「面试中…」+ 岗位）；字体走 `/data/res/fonts/MiSans-Normal.ttf`，加载失败退回内置字体（中文就不显示）且只记日志 |
+| `main.c` | 启动时 `interview_ui_init()`；主循环每拍 `pump()` + **会话边界切页**（看 `g_session_id` 有无）；K3 切换后岗位文字立刻更新 |
+| `Kconfig` | 主任务栈 32768 → **327680** |
+| `Makefile` / `CMakeLists` | +`interview_ui.c`（CMake 侧 `DEPENDS lvgl`） |
+| 触摸 | **本版不做**（用户定的：K1/K2/K3 已经够） |
+
+**线程纪律**（写进了 `interview_ui.h`）：本板 LVGL 是 `LV_OS_NONE`（**无线程安全**）——
+界面只由主线程碰，工作线程只写共享状态，主循环 100ms 一拍 pump（静态文字 10Hz 够）。
+**屏幕是附件**：初始化失败只告警，面试流程不受影响（同 §11.25 的优雅退化）。
+
+#### 踩坑三则（这轮真踩的）
+
+1. **板级 defconfig 把栈写死了**：`CONFIG_APP_AI_INTERVIEW_STACKSIZE=8192`（比 Kconfig
+   默认还低）—— Kconfig 的 `default` 根本不生效。defconfig 与 `nuttx/.config` 两处都要改。
+2. **`touch 不存在的文件会把它创建出来`**：force-rebuild 脚本里的 `touch interview_ui.c`
+   在文件尚未同步时造了个 0 字节同名文件，白跑一轮构建。教训：touch 之前先确认文件在。
+3. **VM 到 GitHub 这会儿不通**（fetch 挂到 timeout）—— 改用**局域网补丁搬运**（§11.34 老办法：
+   Windows `git diff > patch` → scp → VM `git apply`）。⚠️ **VM 的 clone 因此处于
+   "内容 = 52d731c、HEAD 还停在 a3a4999、工作区未提交"** 的半吊子状态 —— 下次网络恢复
+   先 `git fetch && git reset --hard openvela/dev-ai-contest-2026` 把它对齐再去编译别的。
+
+#### 验证（编译层）
+
+* `M_EXIT=0`；`interview_ui.o` 生成；**新字符串在 `nsh.fex` 与可烧录 `.img` 里都搜得到**
+  （`AI 模拟面试官`、`按 K1 开始面试`）—— 判据同 §11.47：不靠退出码，靠产物内容。
+* 镜像已拉回 `D:\面包包\firmware\`，两端 sha256 一致（`bfe8c87c…`）。
+* README §4.3 补了"屏幕相关板级开关 + 栈必须 327680"的核对清单。
+* **待真机验证**：烧录后看三件 —— 待机页显示、K1 开始后切"面试中"页、K3 切换岗位文字立刻变；
+  以及 `/data/res/fonts/MiSans-Normal.ttf` 到底在不在（它决定中文能不能显示）。
