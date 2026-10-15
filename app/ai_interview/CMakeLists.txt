@@ -11,6 +11,9 @@ if(CONFIG_APP_AI_INTERVIEW)
     state_machine.c
     network_client.c
     audio_io.c
+    interview_ui.c
+    DEPENDS
+    lvgl
     STACKSIZE
     ${CONFIG_APP_AI_INTERVIEW_STACKSIZE}
     PRIORITY

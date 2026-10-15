@@ -24,12 +24,14 @@ config APP_AI_INTERVIEW_PRIORITY
 
 config APP_AI_INTERVIEW_STACKSIZE
 	int "Stack size"
-	default 32768
+	default 327680
 	---help---
-		Main task stack. libcurl needs a large stack (see
-		CONFIG_EXAMPLES_HTTP_STACKSIZE, default 204800); the network
-		work itself runs on a worker thread, this only needs to cover
-		the state machine, button scanning and log output.
+		主任务栈。2026-10-16 起从 32768 提到 327680，因为主循环里开始跑
+		LVGL（屏幕界面，见 interview_ui.c）—— 327680 照抄打地鼠
+		（EXAMPLES_MYWHACKMOLE）的已验证值；没屏时多出来的是闲置栈。
+
+		网络/音频仍跑在工作线程上（WORKER_STACKSIZE）：libcurl 需要
+		200KB 量级（见 CONFIG_EXAMPLES_HTTP_STACKSIZE 的注释）。
 
 config APP_AI_INTERVIEW_WORKER_STACKSIZE
 	int "Network/audio worker stack size"

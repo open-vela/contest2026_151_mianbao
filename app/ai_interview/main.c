@@ -31,6 +31,7 @@
 #include "network_client.h"
 #include "audio_io.h"
 #include "app_config.h"
+#include "interview_ui.h"
 
 /* ---- 按键 GPIO ---- */
 #define KEY1_GPIO  1   /* K1 开始面试 */
@@ -88,6 +89,10 @@ static const char *current_role(void)
 
     return (picked != NULL) ? picked : app_role();
 }
+
+/* 屏幕界面当前在哪一页（主线程专用缓存）：有没有会话 → 面试中页 / 待机页。
+ * 存成文件级 static 而不是循环里的局部，是为了让"只在变化时动界面"一眼可见。 */
+static int g_ui_in_session = 0;
 
 /* ---------- 事件队列 ---------- */
 
@@ -454,6 +459,7 @@ static void check_buttons(void)
             printf("[Main] K3 按下 —— 岗位切换为「%s」（%d/%d）\n",
                    current_role(), g_role_idx + 1, APP_ROLE_COUNT);
             state_machine_flash(2);
+            interview_ui_set_role(current_role());   /* 屏上岗位立刻跟着变 */
         }
     }
     g_key3_last = s3;
@@ -492,6 +498,13 @@ int main(int argc, char *argv[])
     state_machine_init();
     init_buttons();
 
+    /* 屏幕界面：**附件**，初始化失败只告警、不中断面试（见 interview_ui.h）。 */
+    if (interview_ui_init() == 0) {
+        interview_ui_set_role(current_role());
+    } else {
+        printf("[Main] 屏幕不可用 —— 界面相关功能跳过，面试流程不受影响\n");
+    }
+
     /* 云端地址在**启动工作线程之前**打印：此刻主线程是唯一在写 stdout 的线程，
      * 不会被踩掉（原因见 network_client.c 里 cloud_init 那段注释）。 */
     printf("[Cloud] 云端地址: %s\n", app_cloud_base_url());
@@ -514,9 +527,23 @@ int main(int argc, char *argv[])
 
     for (;;) {
         system_event_t ev;
+        int live;
 
         state_machine_update_led();
         check_buttons();
+
+        /* ---- 屏幕界面（附件，见 interview_ui.h）----
+         * 会话边界切页（有会话 = 面试中页）+ 每拍推进 LVGL。
+         * 会话状态只在锁内读一眼，变化时才动界面（g_ui_in_session 缓存）。 */
+        pthread_mutex_lock(&g_lock);
+        live = (g_session_id[0] != '\0');
+        pthread_mutex_unlock(&g_lock);
+
+        if (live != g_ui_in_session) {
+            g_ui_in_session = live;
+            interview_ui_set_session(live);
+        }
+        interview_ui_pump();
 
         /* 把工作线程投来的事件交给状态机 —— 只有主线程能碰它 */
         while (app_pop_event(&ev)) {
