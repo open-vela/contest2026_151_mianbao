@@ -35,7 +35,7 @@
 /* ---- 按键 GPIO ---- */
 #define KEY1_GPIO  1   /* K1 开始面试 */
 #define KEY2_GPIO  3   /* K2 取消/返回 */
-#define KEY3_GPIO  4   /* K3 切换模式（暂未实现）*/
+#define KEY3_GPIO  4   /* K3 切换岗位（两场面试之间）*/
 
 static int g_key1_fd = -1;
 static int g_key2_fd = -1;
@@ -70,6 +70,24 @@ static int g_evq_tail = 0;
 /* 跨线程只读的会话状态（在锁内更新）*/
 static char g_session_id[64];
 static char g_last_text[256];
+
+/* ---- 当前岗位（K3 循环切换）----
+ *
+ * -1 = 还没按过 K3，跟随 app_role()（ROLE 环境变量 / Kconfig 默认）。
+ *
+ * ⚠️ 只在**两场面试之间**可改：云端出题按**请求里的** role，而报告 / 评分 / 导出
+ * 按**建会话时的** role（cloud/app.py 的 get_or_create_session 与 llm_interview
+ * 调用点）—— 中途换会让一场面试出现两种岗位：题变了、报告还是旧的。所以会话没
+ * 结束（`g_session_id` 非空）时 K3 只提示、不切。
+ */
+static int g_role_idx = -1;
+
+static const char *current_role(void)
+{
+    const char *picked = app_role_at(g_role_idx);
+
+    return (picked != NULL) ? picked : app_role();
+}
 
 /* ---------- 事件队列 ---------- */
 
@@ -120,7 +138,7 @@ static int upload_once(const uint8_t *wav, size_t wav_len, cloud_response_t *res
     req.session_id = sid;
     req.wav = wav;
     req.wav_len = wav_len;
-    req.role = app_role();
+    req.role = current_role();
     req.state = "recording_finished";
 
     return cloud_send_audio(&req, resp);
@@ -411,8 +429,32 @@ static void check_buttons(void)
     }
     g_key2_last = s2;
 
+    /* K3 下降沿：在两场面试之间循环切换岗位。
+     *
+     * 为什么必须"两场之间"：云端出题按**请求里的** role，但报告 / 评分 / 导出按
+     * **建会话时的** role —— 中途换会让一场面试出现两种岗位（题变了、报告还是旧的）。
+     * 所以会话没结束（`g_session_id` 非空）时只提示，不切。
+     */
     if (s3 == 0 && g_key3_last == 1) {
-        printf("[Main] K3 按下（切换模式未实现）\n");
+        int session_live;
+
+        pthread_mutex_lock(&g_lock);
+        session_live = (g_session_id[0] != '\0');
+        pthread_mutex_unlock(&g_lock);
+
+        if (busy) {
+            printf("[Main] K3 按下，但正在进行中 —— 等这一轮跑完再按\n");
+        } else if (session_live) {
+            printf("[Main] K3 按下 —— 本场面试还没结束（题和报告要用同一个岗位），"
+                   "等报告出来再按；要强制换就重启设备\n");
+        } else {
+            int cur = (g_role_idx >= 0) ? g_role_idx : app_role_index(app_role());
+
+            g_role_idx = (cur + 1) % APP_ROLE_COUNT;
+            printf("[Main] K3 按下 —— 岗位切换为「%s」（%d/%d）\n",
+                   current_role(), g_role_idx + 1, APP_ROLE_COUNT);
+            state_machine_flash(2);
+        }
     }
     g_key3_last = s3;
 }
@@ -468,7 +510,7 @@ int main(int argc, char *argv[])
     printf("\n[Main] 系统就绪，等待按键开始面试...\n");
     printf("[Main] K1: 开始面试\n");
     printf("[Main] K2: 取消/返回\n");
-    printf("[Main] K3: 切换模式\n\n");
+    printf("[Main] K3: 切换岗位（在面试结束后按）\n\n");
 
     for (;;) {
         system_event_t ev;

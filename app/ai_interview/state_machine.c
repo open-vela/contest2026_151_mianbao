@@ -57,6 +57,15 @@ static void led2_write(int on)
 static unsigned int g_led_tick = 0;
 static system_state_t g_led_tick_state = STATE_IDLE;
 
+/* ---- 一次性确认闪（K3 换岗位等"系统确实收到了"的反馈）----
+ *
+ * 闪灯期间**接管** LED1（LED2 保持灭），闪完自动交还给状态图案 —— 交还时把节拍
+ * 归零，图案从起点开始（同"换状态"的处理，避免从某个相位中途接上）。
+ */
+#define FLASH_HALF_TICKS  2     /* 快闪：2 tick 一侧（≈200ms）*/
+static int g_flash_left = 0;    /* 还剩几个 tick；>0 表示正在闪 */
+static unsigned int g_flash_phase = 0;
+
 /* 占空比 50% 的方波：half 越大越慢 */
 static int blink_square(unsigned int tick, unsigned int half)
 {
@@ -188,8 +197,31 @@ int state_machine_is_busy(void) {
     return (g_current_state == STATE_RECORDING || g_current_state == STATE_UPLOADING || g_current_state == STATE_PLAYING);
 }
 
+void state_machine_flash(int times)
+{
+    if (times < 1) {
+        return;
+    }
+    g_flash_left = times * FLASH_HALF_TICKS * 2;
+    g_flash_phase = 0;
+}
+
 void state_machine_update_led(void)
 {
+    /* 正在"确认闪"：接管 LED1，闪完自动交还 */
+    if (g_flash_left > 0) {
+        led1_write(((g_flash_phase / FLASH_HALF_TICKS) % 2) == 0);
+        led2_write(0);
+        g_flash_phase++;
+        g_flash_left--;
+        if (g_flash_left == 0) {
+            g_flash_phase = 0;
+            g_led_tick = 0;
+            g_led_tick_state = g_current_state;
+        }
+        return;
+    }
+
     /* 换状态就把节拍归零：图案从头开始，"三短闪"才真的是三下，而不是从某个
      * 相位中途接上（否则可能看起来只有两下）。 */
     if (g_current_state != g_led_tick_state) {
