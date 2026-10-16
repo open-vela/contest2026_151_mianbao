@@ -52,8 +52,11 @@ SCR_OFF_Y = 17.0        # 屏幕顶边距板上缘（实测"约18"，取 17 让�
 TERM_Y0, TERM_Y1 = 22.8, 58.9   # 端子组（CAN×2 + RS485×2）沿边跨度（实测 35 长）
 TERM_H = 7.0                    # 端子高出板面（实测）
 TERM_Z0 = STD_H + BOARD_T       # 从板面起
-USBA_Y = 33.5                   # USB HOST（双层）中心
-USBA_W, USBA_H = 14.0, 13.5     # 开口（实测单口 13×5.5，双层叠起来）
+USBA_Y = 33.5                   # USB HOST 中心
+# ⚠️ 单层/双层有过拉锯：宣传照看着是上下两层，用户实物在手确认**只有 1 个口**
+# （"那个位置放不下 2 个 U 盘"）—— 2026-10-17 定案：**默认单层**（实测 13×5.5 + 余量），
+# 双层版仍作为变体输出（case_bottom_usb_dual.stl），万一换板型可直接用。
+USBA_W, USBA_H = 14.0, 6.5      # 单层开口（默认）
 USBC_XS = (16.5, 34.8)          # 两个 USB-C 中心（照片读数）
 USBC_W, USBC_H = 9.0, 3.5       # 实测 8.5×3 + 余量
 TF_X = 53.0                     # TF 卡中心（照片读数）
@@ -169,7 +172,13 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "."
     b = to_mesh(build_bottom())
     t = to_mesh(build_top())
-    for name, mesh in (("case_bottom.stl", b), ("case_top.stl", t)):
+    # 备用变体：USB 双层叠口（改常量后重出）
+    global USBA_H
+    saved, USBA_H = USBA_H, 13.5
+    b_dual = to_mesh(build_bottom())
+    USBA_H = saved
+    for name, mesh in (("case_bottom.stl", b), ("case_top.stl", t),
+                       ("case_bottom_usb_dual.stl", b_dual)):
         p = f"{out}/{name}"
         mesh.export(p)
         print(f"{p}: {len(mesh.faces)} 面, 体积 {mesh.volume/1000:.1f} cm3, "
