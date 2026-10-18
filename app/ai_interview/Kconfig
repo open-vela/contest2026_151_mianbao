@@ -84,7 +84,10 @@ config APP_AI_INTERVIEW_TLS_INSECURE
 
 config APP_AI_INTERVIEW_MAX_RECORD_SECONDS
 	int "Max recording seconds per round"
-	default 30
+	default 60
+	---help---
+		单轮录音上限（秒）。2026-10-18 由 30 上调到 60（与静音收尾一起"翻倍"：
+		真实面试的回答往往比演示稿长）。运行期可用 MAX_REC_SEC 覆盖（1~300）。
 
 config APP_AI_INTERVIEW_SILENCE_THRESHOLD
 	int "Silence detection RMS threshold (16-bit full scale)"

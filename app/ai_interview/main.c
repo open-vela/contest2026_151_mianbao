@@ -45,10 +45,15 @@ static int g_key3_fd = -1;
 static int g_key1_last = 1;  /* 默认高电平（松开）*/
 static int g_key2_last = 1;
 static int g_key3_last = 1;
+static int g_key2_hold = 0;  /* K2 已按住的拍数（100ms/拍）—— 长按舍弃用 */
 
 #define MAIN_LOOP_MS      100
 #define UPLOAD_MAX_RETRY  3
 #define UPLOAD_RETRY_SEC  3
+
+/* K2 长按多久算"舍弃本场"：15 拍 × 100ms = 1.5 秒。
+ * 用于误触 K1 / 岗位选错时**直接放弃这一场、不生成报告**（省时间）。 */
+#define K2_DISCARD_TICKS  15
 
 /* ---- 主线程 -> 工作线程 ---- */
 typedef enum {
@@ -432,6 +437,39 @@ static void check_buttons(void)
             printf("[Main] K2 按下 —— 当前待机，无操作\n");
         }
     }
+    /* K2 **长按** ~1.5 秒：舍弃本场（2026-10-18 加）。
+     *
+     * 场景：误触 K1、岗位选错了 —— 直接放弃这一场、**不生成报告**，省掉一轮
+     * LLM+TTS 的时间。做法：置 g_abort（正在跑的一轮尽快退出）+ 清 g_session_id
+     * （云端那场不再继续，永远走不到出报告那一轮）。云端只在 /history 里留一条
+     * "未结束"的记录。
+     *
+     * 短按行为不变：进行中 = 取消本轮；错误态 = 回待机；待机 = 无操作。
+     */
+    if (s2 == 0) {
+        int has_session;
+
+        pthread_mutex_lock(&g_lock);
+        has_session = (g_session_id[0] != '\0');
+        pthread_mutex_unlock(&g_lock);
+
+        if (has_session) {
+            if (g_key2_hold <= K2_DISCARD_TICKS) {
+                g_key2_hold++;
+            }
+            if (g_key2_hold == K2_DISCARD_TICKS) {
+                printf("[Main] K2 长按 —— 舍弃本场（不生成报告），回到待机\n");
+                g_abort = 1;
+                pthread_mutex_lock(&g_lock);
+                g_session_id[0] = '\0';
+                pthread_mutex_unlock(&g_lock);
+            }
+        } else {
+            g_key2_hold = 0;
+        }
+    } else {
+        g_key2_hold = 0;
+    }
     g_key2_last = s2;
 
     /* K3 下降沿：在两场面试之间循环切换岗位。
@@ -522,7 +560,7 @@ int main(int argc, char *argv[])
 
     printf("\n[Main] 系统就绪，等待按键开始面试...\n");
     printf("[Main] K1: 开始面试\n");
-    printf("[Main] K2: 取消/返回\n");
+    printf("[Main] K2: 取消本轮 / 长按 1.5 秒舍弃本场\n");
     printf("[Main] K3: 切换岗位（在面试结束后按）\n\n");
 
     for (;;) {

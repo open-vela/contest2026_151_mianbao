@@ -94,9 +94,14 @@ static int codec_configure(void)
 
 /* 分块与判定节奏，均以 100ms 为粒度（与主循环节拍一致）*/
 #define AI_CHUNK_MS            100u
-#define AI_SILENCE_CHUNKS      20   /* 连续 2 秒静音 -> 认为说完了 */
+/* 连续静音多久算"说完了"。2026-10-18 由 2 秒上调到 4 秒（用户实测：真实对话里
+ * 思考/换气的停顿常超过 2 秒，说一半就被截断）。与 MAX_REC_SEC 一起"翻倍"。 */
+#define AI_SILENCE_CHUNKS      40   /* 连续 4 秒静音 -> 认为说完了 */
 #define AI_MIN_SPEECH_CHUNKS    3   /* 至少 300ms 人声才允许被静音截断 */
 #define AI_NOSPEECH_CHUNKS     50   /* 5 秒还没出声 -> 判定没人说话 */
+/* 出过声但人声没攒够时的强制收尾。2026-10-18 起与 AI_SILENCE_CHUNKS 相等 ——
+ * 正常路径放宽到 4 秒后，这条只对"说话不足 300ms"的退化情形（够不到
+ * AI_MIN_SPEECH_CHUNKS）有意义。 */
 #define AI_LONG_SILENCE_CHUNKS 40   /* 4 秒：出过声但人声没攒够时的强制收尾 */
 
 static void put_le32(uint8_t *p, uint32_t v)
@@ -427,7 +432,7 @@ ai_rec_result_t audio_record_wav(uint8_t **out, size_t *out_len,
         }
         /* 收尾条件，两条取或：
          *
-         * 正常路径 —— 说过话（累计 >=300ms）之后连续静音 2 秒。
+         * 正常路径 —— 说过话（累计 >=300ms）之后连续静音 4 秒（2026-10-18 由 2 秒上调）。
          *
          * 兜底路径 —— speech_chunks 是**累计**值，说一句很短的"喂喂"只产生
          * 2 块超门限的音频，永远够不到 AI_MIN_SPEECH_CHUNKS，上面那条就
