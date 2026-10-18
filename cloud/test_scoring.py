@@ -365,6 +365,7 @@ class TestStageInjection(unittest.TestCase):
         # 2026-10-19：舞台提示会被 TTS 念出来，必须禁止；连珠追问要一口气念完
         self.assertIn("不要写「（沉默三秒）」", fierce["system_prompt"])
         self.assertIn("一段连续文字", fierce["system_prompt"])
+        self.assertIn("用逗号连接", fierce["system_prompt"], "连珠追问要一口气念完")
         for kwargs in (std, fierce, mild):
             self.assertIn("不要换行", kwargs["system_prompt"],
                           "一段连续文字是硬性要求，三档都该有")
