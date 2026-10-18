@@ -56,6 +56,15 @@ void cloud_init(void);
 int cloud_health_check(void);
 
 /*
+ * 通知云端删除一场会话的记录（K2 长按"舍弃本场"用，2026-10-18）。
+ *
+ * 发的是 `DELETE /api/sessions/<sid>`：内存与落盘那份**一起删** ——
+ * 用户要的是"这次记录直接不要了"（而不是像 finish 那样留一条"未结束"）。
+ * 失败只返回负值，由调用方决定怎么提示；删不掉不影响本机继续用。
+ */
+int cloud_discard_session(const char *session_id);
+
+/*
  * 上行音频并取回本轮结果。
  * 内部会调用 cloud_parse_response()，保证失败判定逻辑只有一个实现点。
  */

@@ -55,6 +55,25 @@ def _path(session_id):
     return os.path.join(DATA_DIR, session_id + SUFFIX)
 
 
+def delete(session_id) -> bool:
+    """删除一条落盘存档。不存在也算成功；**永远不抛异常**（同 save 的取舍：
+    调用点在面试主链路上，删不掉的后果最多是 /history 里多一条，不能变成 500）。
+
+    非法 id（`_path` 返回 None）返回 False —— 绝不拼接路径。
+    """
+    path = _path(session_id)
+    if path is None:
+        return False
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return True
+    except Exception as e:
+        logger.warning(f"[落盘] 删除失败 {session_id}: {e}")
+        return False
+    return True
+
+
 def save(snapshot) -> bool:
     """把一份快照写进磁盘；成功返回 True，任何失败都返回 False 且不抛异常。
 
