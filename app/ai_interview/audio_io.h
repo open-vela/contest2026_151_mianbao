@@ -53,7 +53,7 @@ const char *audio_play_strerror(ai_play_result_t r);
  * 设置播放音量（0~100%）。运行期生效，播放中也能调（2026-10-19 触摸音量控件用）。
  * 映射到 codec 的 DACL/DACR digital volume —— 它不是线性音量，而是 0.75dB/步的
  * 数字音量寄存器（0x00 静音、0xA0=0dB、0xFF=+71.25dB）。这里把 0~100% 均匀
- * 映射到 -22.5dB~0dB（0% 为静音），**每 10% 约 2.25dB**；这个值会被下一次录音时
+ * 映射到 -15dB~0dB（0% 为静音），**每 10% 约 1.5dB**；这个值会被下一次录音时
  * 的 codec 重配沿用（见 audio_io.c 的 g_dac_volume）。
  * ⚠️ 主线程可调用（snd_ctl_set 很短）；网络/播放仍只在工作线程。
  */
