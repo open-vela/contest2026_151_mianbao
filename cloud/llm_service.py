@@ -30,6 +30,12 @@ SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 # llm_interview() 收到的**含**本轮回答，所以后者要先减 1 再比。
 HISTORY_FINISH_THRESHOLD = 20
 
+# 面试压力档位（2026-10-19，规则与三档命名照搬 myagent 的 mock-interviewer 技能）。
+# 这里是**唯一来源**：app.py 用它校验入参，提示词文件 skills/next_question.json 的
+# pressure 键由单测对账（test_interview_stage），避免两处名单漂移。
+PRESSURE_LEVELS = ("温和", "标准", "压力")
+DEFAULT_PRESSURE = "标准"
+
 # ⚠️ mimo-v2.5 是**推理模型**：它先产出思考（reasoning_content），且 reasoning_tokens
 # 与正文**共用** max_tokens 预算。实测思考会吃掉 300~800 token，而各 skill 的
 # max_tokens 是按"输出额度"配的（600/800），于是历史越长思考越久、正文余量越小：
@@ -141,7 +147,8 @@ def start_interview(role: str) -> dict:
         return {"text": "抱歉，生成问题失败，请重试。", "next_action": "continue"}
 
 
-def next_question(role: str, history: list, last_answer: str) -> dict:
+def next_question(role: str, history: list, last_answer: str,
+                  pressure: str = DEFAULT_PRESSURE) -> dict:
     """
     Skill: next_question — 根据用户回答生成下一个问题或追问
 
@@ -156,6 +163,25 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     skill = load_skill("next_question")
     if not skill:
         return {"text": "抱歉，加载面试配置失败。", "next_action": "continue"}
+
+    # ---- 压力档位（2026-10-19，规则照搬 myagent 的 mock-interviewer 技能）----
+    # 档位是**会话级**设置（app.py 在建会话时钉住），这里只把它翻成提示词：
+    # 规则正文进 system prompt 的 {pressure_block}，本轮 user 消息里只留一行提醒
+    # （要求写在哪、材料就在哪 —— 同 §11.42 的位置纪律）。
+    # 对不上（旧提示词文件 / 未知档位）时退回「标准」；连标准都没有就整块留空，
+    # 退化成"没有档位提示"的样子，绝不报错（同参考块的优雅退化）。
+    if pressure not in PRESSURE_LEVELS:
+        pressure = DEFAULT_PRESSURE          # 未知档位退回默认，别把错名字写进提示词
+    pressure_rules = ((skill.get("pressure") or {}).get(pressure)
+                      or (skill.get("pressure") or {}).get(DEFAULT_PRESSURE, ""))
+    pressure_block = ""
+    if pressure_rules:
+        safety = skill.get("pressure_safety", "")
+        pressure_block = f"【压力档位：{pressure}】\n{pressure_rules}"
+        if safety:
+            pressure_block += "\n" + safety
+    else:
+        logger.warning(f"[压力] 提示词里没有「{pressure}」档的规则 —— 本场按无档位提示跑")
 
     # ---- 题库参考块（见 cloud/question_bank.py 与台账 §11.21）----
     #
@@ -240,6 +266,11 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
             logger.info(f"[题库] 第 {round_number} 轮（{name}）本就不带参考块 "
                         f"—— 这一段问的是他自己的经历")
 
+    # 压力档位块：规则正文进 system prompt（同【面试纪律】一类，全局行为要求）
+    system_prompt = system_prompt.replace("{pressure_block}", pressure_block)
+    if pressure_block:
+        logger.info(f"[压力] 第 {round_number} 轮档位：{pressure}")
+
     # 兜底：万一提示词文件里还留着旧占位符（拷贝了旧版本），别让它原样进提示词
     system_prompt = system_prompt.replace("{reference_block}\n\n", "")
     system_prompt = system_prompt.replace("{reference_block}", "")
@@ -269,6 +300,9 @@ def next_question(role: str, history: list, last_answer: str) -> dict:
     parts = [f"候选人回答：{last_answer}"]
     if stage_brief:
         parts.append(f"【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}")
+    if pressure_block:
+        # 一行提醒（规则正文在 system prompt）—— 离"下一句要写什么"最近的位置。
+        parts.append(f"【本场压力档位：{pressure}】")
     if role_focus:
         # 岗位角度也是"要求"，跟 brief 放一起；参考块（材料）跟在这两者**下面** ——
         # 要求写在哪，材料就在哪（§11.42）。
@@ -664,7 +698,8 @@ def _finish_requested(history: list) -> str:
     return match_reason(last.get("content", ""))
 
 
-def llm_interview(role: str, history: list, state: str, audio_base64: str = "") -> dict:
+def llm_interview(role: str, history: list, state: str, audio_base64: str = "",
+                  pressure: str = DEFAULT_PRESSURE) -> dict:
     """
     兼容旧版接口（已被 skill 函数替代）
     """
@@ -698,7 +733,7 @@ def llm_interview(role: str, history: list, state: str, audio_base64: str = "") 
                     logger.info(f"[结束] 候选人请求结束面试（命中 {finish_reason!r}，"
                                 f"实际轮次 {len(history) // 2}），提前生成报告")
                 return generate_feedback(role, history)
-            return next_question(role, history[:-1], history[-1]["content"])
+            return next_question(role, history[:-1], history[-1]["content"], pressure)
 
     return start_interview(role)
 

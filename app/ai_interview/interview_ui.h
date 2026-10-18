@@ -29,6 +29,9 @@ void interview_ui_pump(void);
 /* 当前岗位变化 —— K3 切换后调用，两页上的岗位文字都会更新。 */
 void interview_ui_set_role(const char *role);
 
+/* 当前压力档位变化 —— K2 赛前切换后调用（温和 / 标准 / 压力）。 */
+void interview_ui_set_pressure(const char *pressure);
+
 /* 会话开始/结束 → 切页：1 = 面试中页，0 = 待机页。只在真的变化时才动界面。 */
 void interview_ui_set_session(int in_session);
 

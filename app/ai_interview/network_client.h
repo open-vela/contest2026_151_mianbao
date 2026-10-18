@@ -32,6 +32,7 @@ typedef struct {
     const uint8_t *wav;         /* 含 44 字节头的完整 WAV（不是裸 PCM） */
     size_t         wav_len;
     const char    *role;        /* 面试官角色，如 "AI 应用开发"（要能对上云端题库的岗位名） */
+    const char    *pressure;    /* 压力档位："温和" / "标准" / "压力"（要能对上云端提示词） */
     const char    *state;       /* 录音结束固定传 "recording_finished" */
 } cloud_request_t;
 

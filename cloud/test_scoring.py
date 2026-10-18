@@ -326,7 +326,7 @@ class TestStageInjection(unittest.TestCase):
     QUERY = "我用向量数据库做检索，召回率提升到 92%。"
     BLOCK_HEADER = "【本轮参考题"
 
-    def ask_kwargs(self, round_number, reply="一句问话？"):
+    def ask_kwargs(self, round_number, reply="一句问话？", pressure="标准"):
         """造一场到第 N 轮为止的历史，调一次 next_question，拿回 call_llm 的完整入参。"""
         history = []
         for r in range(1, round_number):
@@ -334,7 +334,7 @@ class TestStageInjection(unittest.TestCase):
             history.append({"role": "assistant", "content": f"第 {r} 轮的追问？"})
         history.append({"role": "user", "content": self.QUERY})
         with mock.patch.object(llm_service, "call_llm", return_value=reply) as patched:
-            llm_service.next_question("AI 应用开发", history[:-1], self.QUERY)
+            llm_service.next_question("AI 应用开发", history[:-1], self.QUERY, pressure)
         return patched.call_args.kwargs
 
     def ask(self, round_number):
@@ -351,6 +351,34 @@ class TestStageInjection(unittest.TestCase):
         """这一轮**发给模型的任何一条消息**里有没有参考题。"""
         return any(self.BLOCK_HEADER in m.get("content", "")
                    for m in self.ask_kwargs(round_number)["messages"])
+
+    def test_压力档位的规则进_system_prompt_且本轮有提醒(self):
+        """2026-10-19：三档照搬 myagent —— 规则正文进 system prompt、
+        本轮 user 消息末尾留一行提醒（recency，同 §11.42 的位置纪律）。"""
+        std = self.ask_kwargs(5, pressure="标准")
+        fierce = self.ask_kwargs(5, pressure="压力")
+        mild = self.ask_kwargs(5, pressure="温和")
+
+        self.assertIn("【压力档位：标准】", std["system_prompt"])
+        self.assertIn("【压力档位：压力】", fierce["system_prompt"])
+        self.assertIn("连珠追问", fierce["system_prompt"], "压力档的核心行为不能丢")
+        self.assertIn("【压力档位：温和】", mild["system_prompt"])
+        self.assertIn("最多追 1 轮", mild["system_prompt"], "温和档的追问上限不能丢")
+
+        # 安全边界随每一档都在（压力加在问题上，不加在人身上）
+        for kwargs in (std, fierce, mild):
+            self.assertIn("不加在人身上", kwargs["system_prompt"])
+
+        # 本轮 user 消息末尾的档位提醒：压力档写着压力，不该混进标准
+        last = fierce["messages"][-1]["content"]
+        self.assertIn("【本场压力档位：压力】", last)
+        self.assertNotIn("【本场压力档位：标准】", last)
+
+    def test_未知档位退回标准(self):
+        """入参被写错时不把错名字写进提示词 —— 退回默认（同岗位的优雅退化）。"""
+        unknown = self.ask_kwargs(5, pressure="超强")
+        self.assertIn("【压力档位：标准】", unknown["system_prompt"])
+        self.assertNotIn("超强", unknown["system_prompt"])
 
     def test_参考块只在技术段出现(self):
         """背景深挖问的是他自己的项目，题库帮不上忙 —— 注进去只会把话题拽走。"""

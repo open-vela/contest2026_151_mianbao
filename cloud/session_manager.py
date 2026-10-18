@@ -6,9 +6,12 @@ import time, logging
 logger = logging.getLogger(__name__)
 
 class InterviewSession:
-    def __init__(self, session_id: str, role: str):
+    def __init__(self, session_id: str, role: str, pressure: str = "标准"):
         self.session_id = session_id
         self.role = role
+        # 压力档位（温和 / 标准 / 压力）：**建会话时钉住**，同 role ——
+        # 中途客户端传了新档位也不改（见 get_or_create_session）。
+        self.pressure = pressure
         self.history = []
         self.created_at = time.time()
         self.updated_at = time.time()
@@ -33,10 +36,11 @@ class InterviewSession:
 class SessionManager:
     def __init__(self):
         self.sessions = {}
-    def get_or_create_session(self, session_id: str, role: str) -> InterviewSession:
+    def get_or_create_session(self, session_id: str, role: str,
+                              pressure: str = "标准") -> InterviewSession:
         if session_id in self.sessions:
             return self.sessions[session_id]
-        session = InterviewSession(session_id, role)
+        session = InterviewSession(session_id, role, pressure)
         self.sessions[session_id] = session
         return session
     def discard_session(self, session_id: str) -> bool:
@@ -91,6 +95,7 @@ class SessionManager:
         return {
             "session_id": session.session_id,
             "role": session.role,
+            "pressure": session.pressure,
             "question_count": session.question_count,
             "is_finished": session.is_finished,
             # P2 的评分由**后台线程**写入（见 app.py 的 _start_scoring），所以这里

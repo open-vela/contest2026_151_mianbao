@@ -103,6 +103,20 @@ static const char *current_role(void)
  * 存成文件级 static 而不是循环里的局部，是为了让"只在变化时动界面"一眼可见。 */
 static int g_ui_in_session = 0;
 
+/* ---- 压力档位（K2 在"待机且无会话"时循环切换）----
+ *
+ * 默认「标准」= 下标 1（`app_pressure_at` 的顺序是 温和/标准/压力）。
+ * 会话一旦建立就钉死（云端按建会话时的值生效，中途传新值也不改 —— 同岗位）。
+ */
+static int g_pressure_idx = 1;
+
+static const char *current_pressure(void)
+{
+    const char *level = app_pressure_at(g_pressure_idx);
+
+    return (level != NULL) ? level : "标准";
+}
+
 /* ---------- 事件队列 ---------- */
 
 /* 工作线程调用 */
@@ -153,6 +167,7 @@ static int upload_once(const uint8_t *wav, size_t wav_len, cloud_response_t *res
     req.wav = wav;
     req.wav_len = wav_len;
     req.role = current_role();
+    req.pressure = current_pressure();
     req.state = "recording_finished";
 
     return cloud_send_audio(&req, resp);
@@ -456,10 +471,25 @@ static void check_buttons(void)
             printf("[Main] K2 按下 —— 从错误态返回待机\n");
             state_machine_post_event(EVENT_BUTTON_PRESS);
         } else {
-            /* 待机：没有可取消的东西，**什么都不做**。
-             * 顺带不置 g_abort —— 在待机置它没有意义，只会让下一个真正开始的
-             * 轮次在起跑线上被中止。 */
-            printf("[Main] K2 按下 —— 当前待机，无操作\n");
+            int has_session;
+
+            pthread_mutex_lock(&g_lock);
+            has_session = (g_session_id[0] != '\0');
+            pthread_mutex_unlock(&g_lock);
+
+            if (!has_session) {
+                /* 面试开始前：K2 循环切换压力档位（2026-10-19，三档照搬 myagent）。
+                 * 标准 → 压力 → 温和 → 标准。会话一旦建立就钉死。 */
+                g_pressure_idx = (g_pressure_idx + 1) % APP_PRESSURE_COUNT;
+                printf("[Main] K2 按下 —— 压力档位切换为「%s」（%d/%d）\n",
+                       current_pressure(), g_pressure_idx + 1, APP_PRESSURE_COUNT);
+                state_machine_flash(2);
+                interview_ui_set_pressure(current_pressure());
+            } else {
+                /* 待机但本场还没结束（场间）：没有可取消的东西。
+                 * 顺带不置 g_abort —— 在待机置它只会让下一轮在起跑线上被中止。 */
+                printf("[Main] K2 按下 —— 当前待机，无操作（长按可舍弃本场）\n");
+            }
         }
     }
     /* K2 **长按** ~1.5 秒：舍弃本场（2026-10-18 加）。
@@ -572,6 +602,7 @@ int main(int argc, char *argv[])
     /* 屏幕界面：**附件**，初始化失败只告警、不中断面试（见 interview_ui.h）。 */
     if (interview_ui_init() == 0) {
         interview_ui_set_role(current_role());
+        interview_ui_set_pressure(current_pressure());
     } else {
         printf("[Main] 屏幕不可用 —— 界面相关功能跳过，面试流程不受影响\n");
     }
@@ -593,7 +624,7 @@ int main(int argc, char *argv[])
 
     printf("\n[Main] 系统就绪，等待按键开始面试...\n");
     printf("[Main] K1: 开始面试\n");
-    printf("[Main] K2: 取消本轮 / 长按 1.5 秒舍弃本场\n");
+    printf("[Main] K2: 取消本轮 / 长按 1.5 秒舍弃本场 / 赛前短按切换压力档位\n");
     printf("[Main] K3: 切换岗位（在面试结束后按）\n\n");
 
     for (;;) {

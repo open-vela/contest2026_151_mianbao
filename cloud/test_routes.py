@@ -174,6 +174,30 @@ class TestDiscardSession(RouteTestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class TestPressurePinning(RouteTestCase):
+    """压力档位是**会话级**设置（2026-10-19）：建会话时钉住，中途传新值不改（同 role）。"""
+
+    def _post(self, pressure):
+        with mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "一句问话？", "next_action": "continue"}):
+            response = self.client.post("/api/interview/text",
+                                        json={"session_id": SID, "role": "AI 应用开发",
+                                              "pressure": pressure, "text": "你好"})
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_建会话时钉住档位(self):
+        self._post("压力")
+        self.assertEqual(cloud_app.session_manager.get_session(SID).pressure, "压力")
+        # 第二轮换成「标准」—— 会话里的档位不该变
+        self._post("标准")
+        self.assertEqual(cloud_app.session_manager.get_session(SID).pressure, "压力")
+
+    def test_非法档位退回标准(self):
+        self._post("超强")
+        self.assertEqual(cloud_app.session_manager.get_session(SID).pressure, "标准")
+
+
 class TestBasicRoutes(RouteTestCase):
     def test_health(self):
         r = self.client.get("/api/health")
