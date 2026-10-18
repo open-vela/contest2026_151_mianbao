@@ -107,14 +107,15 @@ static void volume_button_event(lv_event_t *e)
     }
 }
 
-static lv_obj_t *make_volume_button(lv_obj_t *parent, const char *text, int delta)
+static lv_obj_t *make_volume_button(lv_obj_t *parent, const char *text, int delta,
+                                    int size)
 {
     lv_obj_t *btn = lv_btn_create(parent);
     lv_obj_t *label;
 
-    lv_obj_set_size(btn, 64, 64);
+    lv_obj_set_size(btn, size, size);
     lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_COLOR), 0);
-    lv_obj_set_style_radius(btn, 32, 0);
+    lv_obj_set_style_radius(btn, size / 2, 0);
     lv_obj_add_event_cb(btn, volume_button_event, LV_EVENT_CLICKED,
                         (void *)(intptr_t)delta);
 
@@ -126,60 +127,97 @@ static lv_obj_t *make_volume_button(lv_obj_t *parent, const char *text, int delt
     return btn;
 }
 
-/* 一排「- 音量 X% +」；两页各建一份，label 指针留给 set_volume 更新。 */
-static void build_volume_row(lv_obj_t *parent, int y, lv_obj_t **label_out)
+/* 一排「- 音量 X% +」；两页各建一份，label 指针留给 set_volume 更新。
+ *
+ * ⚠️ 贴底摆放（2026-10-19 真机修正）：第一版按"屏幕中心 +225"摆，用户实测
+ * **整排完全看不见** —— 屏的可用高度不一定是我们以为的 800（fb 分辨率由驱动
+ * 决定，面板 800×1280 经硬件旋转后也可能是别的值），固定偏移一旦超出就整排
+ * 在屏外。贴到父对象底边后，无论分辨率多少都落在屏幕内。
+ * 小屏（high < 480）同时把按钮缩到 44、边距收到 6，给上面的文字留空间。 */
+static void build_volume_row(lv_obj_t *parent, lv_obj_t **label_out, int compact)
 {
-    lv_obj_t *minus = make_volume_button(parent, "-", -1);
-    lv_obj_t *plus = make_volume_button(parent, "+", +1);
+    int size = compact ? 44 : 64;
+    int edge = compact ? 6 : 16;
+    int gap  = compact ? 75 : 95;
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_t *minus;
+    lv_obj_t *plus;
 
-    *label_out = make_label(parent, "音量 60%", g_font_hint, UI_TEXT_COLOR,
-                            LV_ALIGN_CENTER, 0, y);
-    lv_obj_align(minus, LV_ALIGN_CENTER, -95, y);
-    lv_obj_align(plus, LV_ALIGN_CENTER, 95, y);
+    lv_obj_set_size(row, LV_PCT(100), size);
+    lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -edge);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    minus = make_volume_button(row, "-", -1, size);
+    plus  = make_volume_button(row, "+", +1, size);
+
+    *label_out = make_label(row, "音量 60%", g_font_hint, UI_TEXT_COLOR,
+                            LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(minus, LV_ALIGN_CENTER, -gap, 0);
+    lv_obj_align(plus, LV_ALIGN_CENTER, gap, 0);
+}
+
+/* 当前显示高度；拿不到时返回 0（调用方按常规布局处理）。 */
+static int32_t ui_height(void)
+{
+    lv_display_t *disp = lv_display_get_default();
+
+    return disp != NULL ? lv_display_get_vertical_resolution(disp) : 0;
 }
 
 static void build_idle_page(void)
 {
+    /* 小屏（<480 高）用紧凑坐标：常规布局的 +120/+172 会直接落到屏外。 */
+    int compact = ui_height() > 0 && ui_height() < 480;
+
     g_page_idle = make_page();
 
     /* 产品名。队伍一行与串口横幅同款，评委对着屏就能对上号。 */
     make_label(g_page_idle, "AI 模拟面试官", g_font_title, UI_TEXT_COLOR,
-               LV_ALIGN_CENTER, 0, -120);
+               LV_ALIGN_CENTER, 0, compact ? -70 : -120);
     make_label(g_page_idle, "contest2026_151 · mianbao", g_font_hint, UI_HINT_COLOR,
-               LV_ALIGN_CENTER, 0, -58);
+               LV_ALIGN_CENTER, 0, compact ? -38 : -58);
 
     /* 岗位：K3 切换后这一行立刻跟着变 —— "岗位可视化"就落在这里 */
     g_idle_role = make_label(g_page_idle, "当前岗位：", g_font_body, UI_ROLE_COLOR,
-                             LV_ALIGN_CENTER, 0, 30);
+                             LV_ALIGN_CENTER, 0, compact ? 6 : 30);
 
     /* 压力档位：赛前按 K2 循环切换 —— 与岗位一起构成"开面参数" */
     g_idle_pressure = make_label(g_page_idle, "压力档位：标准（按 K2 切换）",
                                  g_font_hint, UI_HINT_COLOR,
-                                 LV_ALIGN_CENTER, 0, 82);
+                                 LV_ALIGN_CENTER, 0, compact ? 38 : 82);
 
     make_label(g_page_idle, "按 K1 开始面试", g_font_body, UI_TEXT_COLOR,
-               LV_ALIGN_CENTER, 0, 120);
-    make_label(g_page_idle, "按 K3 切换岗位（两场面试之间）", g_font_hint,
-               UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 172);
+               LV_ALIGN_CENTER, 0, compact ? 70 : 120);
+
+    /* 小屏放不下这一行提示 —— K3 的用法在 README 与串口里都有。 */
+    if (!compact) {
+        make_label(g_page_idle, "按 K3 切换岗位（两场面试之间）", g_font_hint,
+                   UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 172);
+    }
 
     /* 触摸音量：待机页就能调好，面试中页也有一排（见 build_live_page） */
-    build_volume_row(g_page_idle, 225, &g_idle_volume);
+    build_volume_row(g_page_idle, &g_idle_volume, compact);
 }
 
 static void build_live_page(void)
 {
+    int compact = ui_height() > 0 && ui_height() < 480;
+
     g_page_live = make_page();
 
     make_label(g_page_live, "面试中…", g_font_title, UI_TEXT_COLOR,
-               LV_ALIGN_CENTER, 0, -60);
+               LV_ALIGN_CENTER, 0, compact ? -46 : -60);
     g_live_role = make_label(g_page_live, "", g_font_body, UI_ROLE_COLOR,
-                             LV_ALIGN_CENTER, 0, 25);
+                             LV_ALIGN_CENTER, 0, compact ? 2 : 25);
     g_live_pressure = make_label(g_page_live, "", g_font_hint, UI_HINT_COLOR,
-                                 LV_ALIGN_CENTER, 0, 68);
+                                 LV_ALIGN_CENTER, 0, compact ? 32 : 68);
     make_label(g_page_live, "请对着开发板回答，说完停顿两秒", g_font_hint,
-               UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 105);
+               UI_HINT_COLOR, LV_ALIGN_CENTER, 0, compact ? 58 : 105);
 
-    build_volume_row(g_page_live, 180, &g_live_volume);
+    build_volume_row(g_page_live, &g_live_volume, compact);
 
     lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);   /* 开机先显示待机页 */
 }
@@ -209,11 +247,27 @@ int interview_ui_init(void)
             printf("[UI] 显示屏初始化失败 —— 本次不带屏运行\n");
             return -1;
         }
+
+        /* 触摸排障用（2026-10-19）：第一版音量控件"完全没显示"，先确认
+         * 输入设备到底有没有接上。点按钮时 main.c 还会打「音量：X%」。 */
+        printf("[UI] 触摸输入 %s（%s）\n",
+               result.indev != NULL ? "已接上" : "未接上", UI_TOUCH_PATH);
     } else if (lv_display_get_default() == NULL) {
         /* 别的应用（如打地鼠）初始化过 LVGL 又没留下可用的显示 —— 同样退化。
          * 本应用重启后能复用已初始化的 LVGL，靠的就是上面这条分支。 */
         printf("[UI] LVGL 已初始化但没有可用显示 —— 本次不带屏运行\n");
         return -1;
+    }
+
+    {
+        /* 排障用：实际 fb 分辨率决定布局（见 build_volume_row 的注释）。 */
+        lv_display_t *disp = lv_display_get_default();
+
+        if (disp != NULL) {
+            printf("[UI] 屏幕分辨率 %d×%d\n",
+                   (int)lv_display_get_horizontal_resolution(disp),
+                   (int)lv_display_get_vertical_resolution(disp));
+        }
     }
 
     g_font_title = load_font(UI_FONT_TITLE, lv_font_default());
