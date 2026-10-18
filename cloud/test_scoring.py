@@ -362,6 +362,12 @@ class TestStageInjection(unittest.TestCase):
         self.assertIn("【压力档位：标准】", std["system_prompt"])
         self.assertIn("【压力档位：压力】", fierce["system_prompt"])
         self.assertIn("连珠追问", fierce["system_prompt"], "压力档的核心行为不能丢")
+        # 2026-10-19：舞台提示会被 TTS 念出来，必须禁止；连珠追问要一口气念完
+        self.assertIn("不要写「（沉默三秒）」", fierce["system_prompt"])
+        self.assertIn("一段连续文字", fierce["system_prompt"])
+        for kwargs in (std, fierce, mild):
+            self.assertIn("不要换行", kwargs["system_prompt"],
+                          "一段连续文字是硬性要求，三档都该有")
         self.assertIn("【压力档位：温和】", mild["system_prompt"])
         self.assertIn("最多追 1 轮", mild["system_prompt"], "温和档的追问上限不能丢")
 

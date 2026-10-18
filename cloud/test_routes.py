@@ -525,6 +525,24 @@ class TestTextInterview(RouteTestCase):
         self.assertEqual(set(response.get_json().keys()),
                          {"type", "text", "tts_audio", "session_id", "next_action", "user_text"})
 
+    def test_tts_gets_one_continuous_line(self):
+        """2026-10-19 用户真机反馈：压力档连珠追问被 TTS 读成"问一句、停一下、
+        又冒一句"。出口必须把空行与舞台提示压掉，整段一次合成。"""
+        with mock.patch.object(cloud_app, "asr_audio_to_text", return_value="候选人说的话"), \
+             mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "（沉默三秒）\n\n第一问？\n第二问？",
+                                             "next_action": "continue"}), \
+             mock.patch.object(cloud_app, "tts_text_to_audio", return_value="ZmFrZQ==") as tts:
+            response = self.client.post("/api/interview", json={
+                "session_id": SID, "role": "AI 应用开发",
+                "state": "recording_finished", "audio": "ZmFrZQ=="})
+
+        self.assertEqual(response.status_code, 200)
+        spoken = tts.call_args.args[0]
+        self.assertNotIn("沉默", spoken)
+        self.assertNotIn("\n", spoken)
+        self.assertEqual(spoken, "第一问？ 第二问？")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

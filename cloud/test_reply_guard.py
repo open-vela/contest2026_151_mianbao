@@ -6,7 +6,8 @@
 """
 import unittest
 
-from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
+from reply_guard import (FALLBACK_QUESTION, clean_history, flatten_for_tts,
+                         strip_meta)
 
 # ---- 真实脏输出（9/18 A/B `--group P` 抓到的，逐字抄自输出文件）----
 
@@ -160,6 +161,37 @@ class TestInvariants(unittest.TestCase):
         self.assertTrue(FALLBACK_QUESTION.endswith("？"))
         self.assertEqual(strip_meta(FALLBACK_QUESTION), FALLBACK_QUESTION)
         self.assertLessEqual(len(FALLBACK_QUESTION), 40)
+
+
+class TestStageDirections(unittest.TestCase):
+    """2026-10-19：压力档把「沉默」写成「（沉默三秒）」—— TTS 会逐字念出来，
+    而且空行会让它读成"问一句、停一下、又冒一句"。这里守住出口。"""
+
+    def test_stage_direction_is_removed(self):
+        raw = "（沉默三秒）\n\n七十二到八十五，这十三个点里，切块长度贡献了多少？"
+        out = strip_meta(raw)
+        self.assertNotIn("沉默", out)
+        self.assertIn("切块长度贡献了多少？", out)
+        self.assertTrue(out.endswith("？"))
+
+    def test_parenthetical_forms_are_removed(self):
+        for raw in ("（停顿）请继续。", "(沉默两秒) 请继续。", "【沉默】请继续。"):
+            out = strip_meta(raw)
+            self.assertNotIn("沉默", out)
+            self.assertNotIn("停顿", out)
+            self.assertIn("请继续", out)
+
+    def test_tts_text_is_one_line(self):
+        raw = "（沉默三秒）\n\n第一问？\n第二问？"
+        self.assertEqual(flatten_for_tts(raw), "第一问？ 第二问？")
+        self.assertNotIn("\n", flatten_for_tts(raw))
+
+    def test_flatten_keeps_clean_text(self):
+        self.assertEqual(flatten_for_tts("请说说你的项目。"), "请说说你的项目。")
+
+    def test_clean_history_removes_stage_direction(self):
+        raw = [{"role": "assistant", "content": "（沉默三秒）\n\n请继续。"}]
+        self.assertNotIn("沉默", clean_history(raw)[0]["content"])
 
 
 class TestCleanHistory(unittest.TestCase):
