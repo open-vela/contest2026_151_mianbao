@@ -286,6 +286,19 @@
   }
   .delbtn:hover { background: #fff5f4; border-color: #b42318; }
   .delbtn:disabled { opacity: .5; cursor: default; }
+  /* 批量删除工具条（/history 顶部） */
+  .hist-toolbar { display: flex; align-items: center; gap: 12px; margin: 8px 0 2px; }
+  .hist-all {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--ink-dim); cursor: pointer;
+  }
+  .hist-toolbar .delbtn { margin-left: auto; }
+  /* 每条记录里的勾选（放在 .sess-actions 左侧，margin-right:auto 把它推过去） */
+  .sess-pick {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12.5px; color: var(--ink-dim); cursor: pointer;
+    margin-right: auto;
+  }
 
   /* ---------- 发送中的临时气泡 ---------- */
   /* 面试官"正在思考"的三个点：让等待这件事**看得见**。
@@ -460,6 +473,12 @@
      刻意不复用同一个容器 —— 两者的滚动、空态、轮询行为都不一样，
      塞在一起只会让两边都变难读。 -->
 <main id="hist" style="display:none">
+  <!-- 批量删除工具条（2026-10-19）：全选 + 删除选中。列表每 5 秒重建一次，
+       勾选状态存在 JS 的 picked 里，重建后按 session_id 恢复。 -->
+  <div class="wrap hist-toolbar" id="histToolbar" style="display:none">
+    <label class="hist-all"><input type="checkbox" id="histAll"> 全选</label>
+    <button class="delbtn" id="histDelBtn" disabled>删除选中</button>
+  </div>
   <div class="wrap" id="histWrap"></div>
 </main>
 
@@ -493,6 +512,9 @@
   var elJump   = document.getElementById("jump");
   var elHist     = document.getElementById("hist");
   var elHistWrap = document.getElementById("histWrap");
+  var elHistToolbar = document.getElementById("histToolbar");
+  var elHistAll     = document.getElementById("histAll");
+  var elHistDelBtn  = document.getElementById("histDelBtn");
   var elHistLink = document.getElementById("histLink");
   var elTextLink = document.getElementById("textLink");
   var elStarter  = document.getElementById("starter");
@@ -501,6 +523,13 @@
   var elSendBtn  = document.getElementById("sendBtn");
   var elContinue = document.getElementById("continueLink");
   var elPending  = document.getElementById("pending");
+
+  // /history 里勾选的 session_id（批量删除用）。列表每 5 秒整块重建一次，
+  // 勾选状态不能只留在 DOM 里 —— 重建后按 session_id 从这份表恢复。
+  var picked = {};
+  // 批量删除进行中：5 秒自动刷新会重建列表，别让 updateToolbar 把按钮文案/禁用态
+  // 在半路改回去。
+  var batchBusy = false;
 
   // ---------- 视图模式 ----------
   //
@@ -816,10 +845,15 @@
   // `base` 是点进去之后落到哪个视图：历史里落到 `/`，文字演练里落到 `/text`。
   // `withEnd` 为真且这场没结束时，右边多一个「结束面试」按钮。
   // `withDelete` 为真时，右边多一个「删除记录」按钮（2026-10-19 用户要的）。
-  function sessItem(s, base, withEnd, withDelete) {
+  // `withSelect` 为真时，左侧多一个勾选框（/history 的批量删除用）。
+  function sessItem(s, base, withEnd, withDelete, withSelect) {
     var link = sessLink(s, base);
     var actions = "";
 
+    if (withSelect) {
+      actions += '<label class="sess-pick"><input type="checkbox" class="pick" ' +
+        'data-sid="' + esc(s.session_id || "") + '"> 选择</label>';
+    }
     if (withEnd && !s.is_finished) {
       actions += '<button class="endbtn" data-sid="' + esc(s.session_id || "") +
         '">结束面试</button>';
@@ -861,13 +895,47 @@
           '<h2>还没有面试记录</h2>' +
           '<p>在开发板上按 <code>K1</code> 说一句话，这一场结束后就会出现在这里。</p>' +
         '</div>';
+      picked = {};
+      updateToolbar();
       return;
     }
     var html = "";
     for (var i = 0; i < items.length; i++) {
-      html += sessItem(items[i] || {}, "/", true, true);
+      html += sessItem(items[i] || {}, "/", true, true, true);
     }
     elHistWrap.innerHTML = html;
+    restorePicks();
+  }
+
+  // 列表重建后按 session_id 恢复勾选；同时丢掉已经不在列表里的 id
+  //（例如后台刷新时被别处删掉了）。
+  function restorePicks() {
+    var boxes = elHistWrap.querySelectorAll(".pick");
+    var seen = {};
+    var i;
+    for (i = 0; i < boxes.length; i++) {
+      var sid = boxes[i].getAttribute("data-sid");
+      seen[sid] = true;
+      boxes[i].checked = !!picked[sid];
+    }
+    for (var key in picked) {
+      if (!seen[key]) { delete picked[key]; }
+    }
+    updateToolbar();
+  }
+
+  function updateToolbar() {
+    if (batchBusy) { return; }
+    var boxes = elHistWrap.querySelectorAll(".pick");
+    var n = 0;
+    for (var key in picked) {
+      if (picked[key]) { n++; }
+    }
+    elHistToolbar.style.display = boxes.length ? "flex" : "none";
+    elHistDelBtn.disabled = n === 0;
+    elHistDelBtn.textContent = n ? "删除选中（" + n + "）" : "删除选中";
+    elHistAll.checked = boxes.length > 0 && n === boxes.length;
+    elHistAll.indeterminate = n > 0 && n < boxes.length;
   }
 
   function loadList() {
@@ -1138,6 +1206,74 @@
   elHistWrap.addEventListener("click", onDeleteClick);
   elStarter.addEventListener("click", onEndClick);
   elStarter.addEventListener("click", onDeleteClick);
+
+  // ---------- 批量删除（/history） ----------
+  //
+  // 逐条走同一个 DELETE 接口，**顺序执行**（不 Promise.all 并发打服务端）：
+  // 最多 20 条，慢一点无所谓；一条失败不影响后面的，最后统一报"失败几条"。
+  function deleteSelected() {
+    var ids = [];
+    var key;
+    for (key in picked) {
+      if (picked[key]) { ids.push(key); }
+    }
+    if (!ids.length) { return; }
+    if (!window.confirm("删除选中的 " + ids.length +
+                        " 场面试记录？删除后不可恢复（不生成报告）。")) {
+      return;
+    }
+    batchBusy = true;
+    elHistDelBtn.disabled = true;
+    elHistDelBtn.textContent = "正在删除…";
+
+    var failed = [];
+    var chain = Promise.resolve();
+    ids.forEach(function (sid) {
+      chain = chain.then(function () {
+        return fetch("/api/sessions/" + encodeURIComponent(sid), { method: "DELETE" })
+          .then(function (r) {
+            return r.json().then(function (d) {
+              if (!r.ok || d.error) {
+                throw new Error(d.error || ("HTTP " + r.status));
+              }
+              return d;
+            });
+          })
+          .then(function () { delete picked[sid]; })
+          .catch(function (e) { failed.push(sid + "：" + e.message); });
+      });
+    });
+    chain.then(function () {
+      batchBusy = false;
+      if (failed.length) {
+        setStatus("err", "部分删除失败（" + failed.length + "/" + ids.length + "）：" +
+                         failed[0]);
+      } else {
+        setStatus("ok", "已删除 " + ids.length + " 场");
+      }
+      loadList();
+    });
+  }
+
+  // 勾选 / 全选。事件委托，因为列表是整块重建的。
+  elHistWrap.addEventListener("change", function (e) {
+    var cb = e.target;
+    if (!cb || !cb.classList || !cb.classList.contains("pick")) { return; }
+    var sid = cb.getAttribute("data-sid");
+    if (cb.checked) { picked[sid] = true; } else { delete picked[sid]; }
+    updateToolbar();
+  });
+  elHistAll.addEventListener("change", function () {
+    var boxes = elHistWrap.querySelectorAll(".pick");
+    var i;
+    for (i = 0; i < boxes.length; i++) {
+      var sid = boxes[i].getAttribute("data-sid");
+      boxes[i].checked = elHistAll.checked;
+      if (elHistAll.checked) { picked[sid] = true; } else { delete picked[sid]; }
+    }
+    updateToolbar();
+  });
+  elHistDelBtn.addEventListener("click", deleteSelected);
 
   // ---------- 启动 ----------
 
