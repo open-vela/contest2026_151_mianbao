@@ -50,13 +50,14 @@
  * 取值来自队伍此前在这块板子上验证过的 amixer 配方
  * （amixer set 19/20/21 255、6/7 150、15 7），此处改用控件名以免索引漂移。
  */
-/* 播放音量（DAC 数字音量 0~255）。初始 150 ≈ 60%，与旧的写死值一致。
+/* 播放音量（DAC 数字音量寄存器值 0~255）。初始 148 = 新映射下的 60%，
+ * 约 -9dB —— 与旧 amixer 配方里的 150（-7.5dB）基本持平。
  *
  * 运行期由屏上的触摸音量控件改（audio_set_volume）。⚠️ codec_configure 每次录音
  * 都会重配 codec —— 所以 DAC 音量必须读这个变量，不能用写死的常数，否则用户调完
- * 音量、下一轮录音又被改回 150（这个坑 2026-10-19 设计时先想到了）。
+ * 音量、下一轮录音又被改回默认值（这个坑 2026-10-19 设计时先想到了）。
  */
-static unsigned int g_dac_volume = 150;
+static unsigned int g_dac_volume = 148;
 
 static int codec_configure(void)
 {
@@ -241,7 +242,20 @@ void audio_set_volume(int percent)
     if (percent > 100) {
         percent = 100;
     }
-    g_dac_volume = (unsigned int)(percent * 255 / 100);
+    /* DACL/DACR digital volume 不是线性音量，而是按 dB 的 8 位寄存器：
+     *   0x00 = 静音，0x01 = -119.25dB，0xA0(160) = 0dB，0xFF = +71.25dB，
+     *   每步 0.75dB。
+     * 第一版直接 `percent * 255 / 100`：60%=153(-5.25dB)，可一按 - 到 50%=127
+     * 就是 **-24.75dB**、一按 + 到 70%=178 就是 **+13.5dB** —— 每 10% 约 19dB，
+     * 用户实测"一按特别小 / 一按特别大"。
+     * 现在把非零百分比均匀铺在 **-22.5dB ~ 0dB**（每 10% = 2.25dB，约 3 个
+     * 寄存器步）；0% 单独给静音。上限停在 0dB，不再进正增益区（会削顶）。
+     */
+    if (percent == 0) {
+        g_dac_volume = 0;
+    } else {
+        g_dac_volume = (unsigned int)(160 - (100 - percent) * 3 / 10);
+    }
 
     /* 立刻生效。codec 还没起来时可能失败 —— 不致命：这个值会被下一次
      * codec_configure 带进去（那是每轮录音都会走的路）。 */
