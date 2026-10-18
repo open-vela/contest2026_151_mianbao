@@ -11,6 +11,7 @@ from llm_service import (DEFAULT_PRESSURE, PRESSURE_LEVELS, llm_interview,
                          score_interview)
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
+from reply_guard import flatten_for_tts
 from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
 import report_export
@@ -159,7 +160,8 @@ def _finished_payload(session_id, session):
     return {
         "type": "report",
         "text": last,
-        "tts_audio": tts_text_to_audio(last, style="专业、友好、有洞察力的面试官") if last else "",
+        "tts_audio": tts_text_to_audio(flatten_for_tts(last),
+                                       style="专业、友好、有洞察力的面试官") if last else "",
         "session_id": session_id,
         "next_action": "finish",
         "user_text": "",
@@ -244,7 +246,7 @@ def handle_interview():
                     "type": "question",
                     "text": reply,
                     "tts_audio": tts_text_to_audio(
-                        reply, style="专业、友好、有洞察力的面试官"
+                        flatten_for_tts(reply), style="专业、友好、有洞察力的面试官"
                     ),
                     "session_id": session_id,
                     "next_action": "continue",
@@ -272,7 +274,7 @@ def handle_interview():
         # TTS 合成
         logger.info(f"[session={session_id}] 开始 TTS...")
         tts_audio_base64 = tts_text_to_audio(
-            ai_text,
+            flatten_for_tts(ai_text),
             style="专业、友好、有洞察力的面试官"
         )
 

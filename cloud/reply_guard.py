@@ -20,8 +20,9 @@
 
 设计上的两条自我约束
 --------------------
-* **干净文本零改动**：只有检测到元叙述痕迹才动手。正常回复原样通过，不做"顺手
-  美化"—— 否则每改一次这个函数都等于在动正常的语气。
+* **干净文本零改动**：只有检测到元叙述痕迹或舞台提示才动手。正常回复原样通过，
+  不做"顺手美化"—— 否则每改一次这个函数都等于在动正常的语气。（舞台提示是
+  2026-10-19 加的定向例外：压力档写出的「（沉默三秒）」会被 TTS 念出来。）
 * **纯函数、确定性、无随机、只用标准库**：同样输入永远同样输出，可单测。
   判据见 `cloud/test_reply_guard.py`。
 """
@@ -64,6 +65,18 @@ _BLOCK_RE = re.compile(
     re.MULTILINE,
 )
 
+# 舞台提示：2026-10-19 压力档把「用短暂沉默压一下」写成了「（沉默三秒）」。
+# TTS 是逐字念的 —— 不剥掉就会念出"括号沉默三秒括号"，而且空行会让它
+# 读成"问完一句、停一会儿、又冒一句"（用户真机反馈）。
+_STAGE_DIRECTION_RE = re.compile(
+    r"[（(【\[][^）)】\]\n]{0,24}(?:沉默|停顿|停一下|安静|pause|silence)"
+    r"[^）)】\]\n]{0,12}[）)】\]]",
+    re.IGNORECASE,
+)
+
+# 给 TTS 的文本要把所有空白（含换行/空行）压成一个空格 —— 一段话一口气念完。
+_WHITESPACE_RE = re.compile(r"\s+")
+
 
 def _is_dirty(text: str) -> bool:
     """有没有元叙述痕迹。没有就别动它（干净文本零改动）。"""
@@ -77,11 +90,32 @@ def _is_dirty(text: str) -> bool:
     return False
 
 
+def strip_stage_directions(text: str) -> str:
+    """剥掉「（沉默三秒）」这类舞台提示（TTS 会把括号里的字念出来）。"""
+    if not text:
+        return ""
+    return _STAGE_DIRECTION_RE.sub("", text)
+
+
+def flatten_for_tts(text: str) -> str:
+    """给 TTS 的最终文本：剥舞台提示，并把所有空白压成单个空格。
+
+    为什么（2026-10-19 用户真机反馈）：TTS 是**整段一次合成**的，但文本里的
+    换行/空行会被读成"问完一个问题、停一会儿、又冒出下一句"。压力档的连珠追问
+    必须一口气念完，所以这里无条件压平；正常句子之间的空格不受影响。
+    """
+    if not text:
+        return ""
+    return _WHITESPACE_RE.sub(" ", strip_stage_directions(text)).strip()
+
+
 def strip_meta(text: str) -> str:
     """返回可以安全念给候选人听的那段话；剥不出东西时返回 `""`。
 
     只在检测到元叙述痕迹时才动手，干净文本原样返回 —— 这条保证是**幂等**的：
     `strip_meta(strip_meta(x)) == strip_meta(x)`。
+    （2026-10-19 起有一个定向例外：舞台提示「（沉默三秒）」会先被剥掉 ——
+    它不是正文，而且 TTS 会逐字念出来。）
 
     脏文本的取舍规则是**按块**而不是按句：不含问句的块一律不念（"判断"块、
     "理由"块、表格、分析啰嗦），含问句的块去掉标签后整块留下。
@@ -89,6 +123,9 @@ def strip_meta(text: str) -> str:
     做过对比实验吗？"砍成后半句"做过对比实验吗？"，反而更没法听。
     """
     if not text or not text.strip():
+        return ""
+    text = strip_stage_directions(text)
+    if not text.strip():
         return ""
     if not _is_dirty(text):
         return text.strip()
