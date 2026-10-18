@@ -49,4 +49,12 @@ ai_play_result_t audio_play_wav(const uint8_t *wav, size_t len,
 const char *audio_rec_strerror(ai_rec_result_t r);
 const char *audio_play_strerror(ai_play_result_t r);
 
+/*
+ * 设置播放音量（0~100%）。运行期生效，播放中也能调（2026-10-19 触摸音量控件用）。
+ * 映射到 codec 的 DACL/DACR digital volume（0~255）；这个值会被下一次录音时
+ * 的 codec 重配沿用（见 audio_io.c 的 g_dac_volume）。
+ * ⚠️ 主线程可调用（snd_ctl_set 很短）；网络/播放仍只在工作线程。
+ */
+void audio_set_volume(int percent);
+
 #endif /* __AUDIO_IO_H__ */

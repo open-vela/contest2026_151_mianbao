@@ -50,6 +50,14 @@
  * 取值来自队伍此前在这块板子上验证过的 amixer 配方
  * （amixer set 19/20/21 255、6/7 150、15 7），此处改用控件名以免索引漂移。
  */
+/* 播放音量（DAC 数字音量 0~255）。初始 150 ≈ 60%，与旧的写死值一致。
+ *
+ * 运行期由屏上的触摸音量控件改（audio_set_volume）。⚠️ codec_configure 每次录音
+ * 都会重配 codec —— 所以 DAC 音量必须读这个变量，不能用写死的常数，否则用户调完
+ * 音量、下一轮录音又被改回 150（这个坑 2026-10-19 设计时先想到了）。
+ */
+static unsigned int g_dac_volume = 150;
+
 static int codec_configure(void)
 {
     static const struct {
@@ -62,9 +70,7 @@ static int codec_configure(void)
         { "ADC1 digital volume", 255 },
         { "ADC2 digital volume", 255 },
         { "ADC3 digital volume", 255 },
-        /* 播放：数字音量 + 耳机增益 */
-        { "DACL digital volume", 150 },
-        { "DACR digital volume", 150 },
+        /* 播放：耳机增益（DAC 数字音量在循环后按运行期值设置） */
         { "HPOUT gain volume",   7   },
     };
     size_t i;
@@ -76,6 +82,16 @@ static int codec_configure(void)
             printf("[Audio] 设置 %s 失败\n", settings[i].name);
             failed++;
         }
+    }
+
+    /* DAC 数字音量 = 当前音量（可能是屏上控件调过的值，见 g_dac_volume） */
+    if (snd_ctl_set(AI_CODEC_CARD, "DACL digital volume", g_dac_volume) < 0) {
+        printf("[Audio] 设置 DACL digital volume 失败\n");
+        failed++;
+    }
+    if (snd_ctl_set(AI_CODEC_CARD, "DACR digital volume", g_dac_volume) < 0) {
+        printf("[Audio] 设置 DACR digital volume 失败\n");
+        failed++;
     }
 
     if (failed != 0) {
@@ -213,6 +229,25 @@ static int wav_parse(const uint8_t *w, size_t len, unsigned *rate,
     /* 头部声明比实际文件长时不硬信声明值 */
     *data_len = (dlen <= len - 44) ? dlen : (len - 44);
     return (*data_len > 0) ? 0 : -1;
+}
+
+/* 见 audio_io.h 的注释。主线程（LVGL 按钮回调）也会调 —— 这里只做一次很短的
+ * snd_ctl_set，不碰 PCM 句柄，和播放/录音线程可以并存。 */
+void audio_set_volume(int percent)
+{
+    if (percent < 0) {
+        percent = 0;
+    }
+    if (percent > 100) {
+        percent = 100;
+    }
+    g_dac_volume = (unsigned int)(percent * 255 / 100);
+
+    /* 立刻生效。codec 还没起来时可能失败 —— 不致命：这个值会被下一次
+     * codec_configure 带进去（那是每轮录音都会走的路）。 */
+    (void)snd_ctl_set(AI_CODEC_CARD, "DACL digital volume", g_dac_volume);
+    (void)snd_ctl_set(AI_CODEC_CARD, "DACR digital volume", g_dac_volume);
+    printf("[Audio] 音量设为 %d%%（DAC %u/255）\n", percent, g_dac_volume);
 }
 
 const char *audio_rec_strerror(ai_rec_result_t r)
