@@ -264,8 +264,8 @@
   }
   .sess-new { font-size: 11.5px; color: #15803d; background: #e8f8ee;
               border-radius: 6px; padding: 1px 6px; }
-  /* 未结束的场次在列表里多一个「结束面试」按钮。
-     它是**列表项之外**的元素（挂在 .sess 旁边）—— 塞进 <a> 里既不合规，
+  /* 列表项右侧的按钮（未结束 →「结束面试」，所有场次 →「删除记录」）。
+     它们是**列表项之外**的元素（挂在 .sess 旁边）—— 塞进 <a> 里既不合规，
      点按钮也会连带触发跳转。 */
   .sess-row { margin-bottom: 10px; }
   .sess-row .sess { margin-bottom: 0; }
@@ -277,6 +277,15 @@
   }
   .endbtn:hover { border-color: var(--brand); color: var(--brand); }
   .endbtn:disabled { opacity: .5; cursor: default; }
+  /* 删除记录（2026-10-19 用户要的）：与「结束面试」并排，红色一眼区分 ——
+     结束是收尾、删除是不可恢复，两者不能长得一样。 */
+  .delbtn {
+    font: inherit; font-size: 12.5px; color: #b42318;
+    background: #fff; border: 1px solid #f0c4c0; border-radius: 8px;
+    padding: 4px 12px; cursor: pointer; margin-left: 8px;
+  }
+  .delbtn:hover { background: #fff5f4; border-color: #b42318; }
+  .delbtn:disabled { opacity: .5; cursor: default; }
 
   /* ---------- 发送中的临时气泡 ---------- */
   /* 面试官"正在思考"的三个点：让等待这件事**看得见**。
@@ -806,14 +815,22 @@
   // 一条场次记录（历史列表与文字演练的"未结束"列表共用）。
   // `base` 是点进去之后落到哪个视图：历史里落到 `/`，文字演练里落到 `/text`。
   // `withEnd` 为真且这场没结束时，右边多一个「结束面试」按钮。
-  function sessItem(s, base, withEnd) {
+  // `withDelete` 为真时，右边多一个「删除记录」按钮（2026-10-19 用户要的）。
+  function sessItem(s, base, withEnd, withDelete) {
     var link = sessLink(s, base);
-    if (!withEnd || s.is_finished) { return link; }
+    var actions = "";
+
+    if (withEnd && !s.is_finished) {
+      actions += '<button class="endbtn" data-sid="' + esc(s.session_id || "") +
+        '">结束面试</button>';
+    }
+    if (withDelete) {
+      actions += '<button class="delbtn" data-sid="' + esc(s.session_id || "") +
+        '">删除记录</button>';
+    }
+    if (!actions) { return link; }
     return '<div class="sess-row">' + link +
-      '<div class="sess-actions">' +
-        '<button class="endbtn" data-sid="' + esc(s.session_id || "") +
-          '">结束面试</button>' +
-      "</div></div>";
+      '<div class="sess-actions">' + actions + "</div></div>";
   }
 
   function sessLink(s, base) {
@@ -848,7 +865,7 @@
     }
     var html = "";
     for (var i = 0; i < items.length; i++) {
-      html += sessItem(items[i] || {}, "/", true);
+      html += sessItem(items[i] || {}, "/", true, true);
     }
     elHistWrap.innerHTML = html;
   }
@@ -933,7 +950,7 @@
       html += '<div class="resume"><h3>你有一场还没结束</h3>' +
               "<p>先打开它、说一句「结束吧」把它收尾，才能开始新的一场。</p>";
       for (i = 0; i < unfinished.length; i++) {
-        html += sessItem(unfinished[i], "/text", true);
+        html += sessItem(unfinished[i], "/text", true, true);
       }
       html += "</div>";
     }
@@ -1071,6 +1088,39 @@
     else { loadStarter(); }
   }
 
+  // ---------- 列表里的「删除记录」 ----------
+  //
+  // 与板子 K2 长按"舍弃本场"同一个端点（DELETE /api/sessions/<sid>）：
+  // 内存 + 落盘一起删，/history 里不留"进行中"，也不生成报告。不可恢复，
+  // 所以先让用户确认一次。
+  function deleteSession(sessionId, btn) {
+    if (!sessionId) { return; }
+    if (!window.confirm("删除这场面试记录？删除后不可恢复（不生成报告）。")) {
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = "正在删除…"; }
+    fetch("/api/sessions/" + encodeURIComponent(sessionId), { method: "DELETE" })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok || d.error) { throw new Error(d.error || ("HTTP " + r.status)); }
+          return d;
+        });
+      })
+      .then(function () {
+        setStatus("ok", "已删除");
+        // 删掉的正好是当前打开的那一场：退出它，别停在一个已经不存在的会话上
+        if (SID && SID === sessionId && !IS_LIST) {
+          history.replaceState(null, "", IS_TEXT ? "/text" : "/");
+          SID = "";
+        }
+        refreshCurrentView();
+      })
+      .catch(function (e) {
+        setStatus("err", e.message);
+        if (btn) { btn.disabled = false; btn.textContent = "删除记录"; }
+      });
+  }
+
   // 事件委托：这两处列表都是整块 innerHTML 重建的，逐个绑定会在每次刷新后失效。
   function onEndClick(e) {
     var btn = e.target && e.target.closest ? e.target.closest(".endbtn") : null;
@@ -1078,8 +1128,16 @@
     e.preventDefault();
     endSession(btn.getAttribute("data-sid"), btn);
   }
+  function onDeleteClick(e) {
+    var btn = e.target && e.target.closest ? e.target.closest(".delbtn") : null;
+    if (!btn) { return; }
+    e.preventDefault();
+    deleteSession(btn.getAttribute("data-sid"), btn);
+  }
   elHistWrap.addEventListener("click", onEndClick);
+  elHistWrap.addEventListener("click", onDeleteClick);
   elStarter.addEventListener("click", onEndClick);
+  elStarter.addEventListener("click", onDeleteClick);
 
   // ---------- 启动 ----------
 
