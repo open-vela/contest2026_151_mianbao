@@ -18,6 +18,9 @@
  * 中文会显示不出来，但界面结构、切页、岗位切换照常（日志里有告警）。 */
 #define UI_FONT_PATH  "/data/res/fonts/MiSans-Normal.ttf"
 
+/* 触摸屏设备（与打地鼠同一块板、同一个设备名）。2026-10-19 起用于屏上音量控件。 */
+#define UI_TOUCH_PATH "/dev/input0"
+
 /* 三个字号：标题 / 正文 / 提示 */
 #define UI_FONT_TITLE 44
 #define UI_FONT_BODY  28
@@ -28,6 +31,7 @@
 #define UI_TEXT_COLOR  0xFFFFFF
 #define UI_ROLE_COLOR  0x4FC3F7
 #define UI_HINT_COLOR  0x9FB3C8
+#define UI_BTN_COLOR   0x2A4A66
 
 static lv_obj_t *g_page_idle;
 static lv_obj_t *g_page_live;
@@ -35,6 +39,9 @@ static lv_obj_t *g_idle_role;
 static lv_obj_t *g_live_role;
 static lv_obj_t *g_idle_pressure;
 static lv_obj_t *g_live_pressure;
+static lv_obj_t *g_idle_volume;
+static lv_obj_t *g_live_volume;
+static void (*g_volume_cb)(int delta);
 
 static const lv_font_t *g_font_title;
 static const lv_font_t *g_font_body;
@@ -89,6 +96,48 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
     return label;
 }
 
+/* ---------- 触摸音量控件（2026-10-19）---------- */
+
+static void volume_button_event(lv_event_t *e)
+{
+    int delta = (int)(intptr_t)lv_event_get_user_data(e);
+
+    if (g_volume_cb != NULL) {
+        g_volume_cb(delta);
+    }
+}
+
+static lv_obj_t *make_volume_button(lv_obj_t *parent, const char *text, int delta)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_t *label;
+
+    lv_obj_set_size(btn, 64, 64);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_COLOR), 0);
+    lv_obj_set_style_radius(btn, 32, 0);
+    lv_obj_add_event_cb(btn, volume_button_event, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)delta);
+
+    label = lv_label_create(btn);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, g_font_body, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(UI_TEXT_COLOR), 0);
+    lv_obj_center(label);
+    return btn;
+}
+
+/* 一排「- 音量 X% +」；两页各建一份，label 指针留给 set_volume 更新。 */
+static void build_volume_row(lv_obj_t *parent, int y, lv_obj_t **label_out)
+{
+    lv_obj_t *minus = make_volume_button(parent, "-", -1);
+    lv_obj_t *plus = make_volume_button(parent, "+", +1);
+
+    *label_out = make_label(parent, "音量 60%", g_font_hint, UI_TEXT_COLOR,
+                            LV_ALIGN_CENTER, 0, y);
+    lv_obj_align(minus, LV_ALIGN_CENTER, -95, y);
+    lv_obj_align(plus, LV_ALIGN_CENTER, 95, y);
+}
+
 static void build_idle_page(void)
 {
     g_page_idle = make_page();
@@ -112,6 +161,9 @@ static void build_idle_page(void)
                LV_ALIGN_CENTER, 0, 120);
     make_label(g_page_idle, "按 K3 切换岗位（两场面试之间）", g_font_hint,
                UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 172);
+
+    /* 触摸音量：待机页就能调好，面试中页也有一排（见 build_live_page） */
+    build_volume_row(g_page_idle, 225, &g_idle_volume);
 }
 
 static void build_live_page(void)
@@ -126,6 +178,8 @@ static void build_live_page(void)
                                  LV_ALIGN_CENTER, 0, 68);
     make_label(g_page_live, "请对着开发板回答，说完停顿两秒", g_font_hint,
                UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 105);
+
+    build_volume_row(g_page_live, 180, &g_live_volume);
 
     lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);   /* 开机先显示待机页 */
 }
@@ -143,6 +197,10 @@ int interview_ui_init(void)
         lv_nuttx_dsc_init(&info);
 #ifdef CONFIG_LV_USE_NUTTX_LCD
         info.fb_path = "/dev/lcd0";
+#endif
+#ifdef CONFIG_INPUT_TOUCHSCREEN
+        /* 触摸屏：屏上音量控件要它（2026-10-19）。设备名同打地鼠。 */
+        info.input_path = UI_TOUCH_PATH;
 #endif
         /* 触摸这一版不用（设计见头文件）—— 不填 input_path，LVGL 就没有输入设备 */
         lv_nuttx_init(&info, &result);
@@ -193,6 +251,24 @@ void interview_ui_set_role(const char *role)
     }
     if (g_live_role != NULL) {
         lv_label_set_text_fmt(g_live_role, "岗位：%s", role);
+    }
+}
+
+void interview_ui_set_volume_cb(void (*cb)(int delta))
+{
+    g_volume_cb = cb;
+}
+
+void interview_ui_set_volume(int percent)
+{
+    if (!g_ready) {
+        return;
+    }
+    if (g_idle_volume != NULL) {
+        lv_label_set_text_fmt(g_idle_volume, "音量 %d%%", percent);
+    }
+    if (g_live_volume != NULL) {
+        lv_label_set_text_fmt(g_live_volume, "音量 %d%%", percent);
     }
 }
 

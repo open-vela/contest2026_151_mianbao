@@ -111,6 +111,130 @@ void cloud_init(void)
     g_initialized = 1;
 }
 
+/* ---------- 文字转语音（开场白） ---------- */
+
+int cloud_tts_text(const char *text, uint8_t **wav, size_t *wav_len)
+{
+    CURL *curl;
+    CURLcode rc;
+    struct mem_chunk chunk = { NULL, 0 };
+    struct curl_slist *headers = NULL;
+    cJSON *root = NULL;
+    cJSON *item;
+    char url[256];
+    char *body = NULL;
+    unsigned char *out = NULL;
+    size_t body_cap;
+    size_t out_len = 0;
+    size_t b64_len;
+    long status = 0;
+    int b64_rc;
+
+    if (wav == NULL || wav_len == NULL) {
+        return CLOUD_ERR_NOMEM;
+    }
+    *wav = NULL;
+    *wav_len = 0;
+
+    if (!g_initialized) {
+        cloud_init();
+    }
+    if (text == NULL || text[0] == '\0') {
+        return CLOUD_ERR_HTTP;
+    }
+
+    snprintf(url, sizeof(url), "%s/api/test/tts", app_cloud_base_url());
+
+    /* 手拼 JSON：调用方传入的是固定模板（岗位名里没有引号 / 反斜杠），
+     * 不需要通用转义 —— 同 cloud_send_audio 的取舍。 */
+    body_cap = strlen(text) * 2 + 64;
+    body = malloc(body_cap);
+    if (body == NULL) {
+        return CLOUD_ERR_NOMEM;
+    }
+    snprintf(body, body_cap, "{\"text\":\"%s\"}", text);
+
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        free(body);
+        return CLOUD_ERR_NOMEM;
+    }
+
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+    rc = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    free(body);
+
+    if (rc != CURLE_OK || status < 200 || status >= 300) {
+        free(chunk.memory);
+        return CLOUD_ERR_HTTP;
+    }
+
+    root = cJSON_Parse(chunk.memory != NULL ? chunk.memory : "");
+    free(chunk.memory);
+    chunk.memory = NULL;
+    if (root == NULL) {
+        return CLOUD_ERR_JSON;
+    }
+
+    item = cJSON_GetObjectItem(root, "audio");
+    if (!cJSON_IsString(item) || item->valuestring == NULL
+        || item->valuestring[0] == '\0') {
+        cJSON_Delete(root);
+        return CLOUD_ERR_EMPTY_TTS;
+    }
+
+    b64_len = strlen(item->valuestring);
+    /* 先探解码后长度，再分配（同 cloud_parse_response 的写法） */
+    b64_rc = mbedtls_base64_decode(NULL, 0, &out_len,
+                                   (const unsigned char *)item->valuestring, b64_len);
+    if (b64_rc != 0 && b64_rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL) {
+        cJSON_Delete(root);
+        return CLOUD_ERR_BAD_AUDIO;
+    }
+    if (out_len < 60) {   /* 44 字节头 + 至少一点数据 */
+        cJSON_Delete(root);
+        return CLOUD_ERR_BAD_AUDIO;
+    }
+
+    out = malloc(out_len);
+    if (out == NULL) {
+        cJSON_Delete(root);
+        return CLOUD_ERR_NOMEM;
+    }
+    b64_rc = mbedtls_base64_decode(out, out_len, &out_len,
+                                   (const unsigned char *)item->valuestring, b64_len);
+    cJSON_Delete(root);
+
+    if (b64_rc != 0) {
+        free(out);
+        return CLOUD_ERR_BAD_AUDIO;
+    }
+    if (out_len < 44 || memcmp(out, "RIFF", 4) != 0 ||
+        memcmp(out + 8, "WAVE", 4) != 0) {
+        printf("[Cloud] TTS 音频解码后不是 WAV\n");
+        free(out);
+        return CLOUD_ERR_BAD_AUDIO;
+    }
+
+    *wav = out;
+    *wav_len = out_len;
+    return CLOUD_OK;
+}
+
 /* ---------- 舍弃会话 ---------- */
 
 /*

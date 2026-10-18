@@ -117,6 +117,57 @@ static const char *current_pressure(void)
     return (level != NULL) ? level : "标准";
 }
 
+/* ---- 播放音量（触摸屏控件调，0~100%）----
+ * 初始 60% ≈ 原来的 DAC 150/255。断电记住：存在板子 /data 的一个小文件里；
+ * 写不进去（只读挂载/没这个分区）就只对本次会话有效，不影响使用。 */
+#define VOLUME_PREF_PATH "/data/ai_interview_volume"
+static int g_volume_pct = 60;
+
+static void load_volume_pref(void)
+{
+    FILE *fp = fopen(VOLUME_PREF_PATH, "r");
+    int value;
+
+    if (fp == NULL) {
+        return;                     /* 没存过 —— 用默认值 */
+    }
+    if (fscanf(fp, "%d", &value) == 1 && value >= 0 && value <= 100) {
+        g_volume_pct = value;
+        printf("[Main] 音量偏好：%d%%（读自 %s）\n", g_volume_pct, VOLUME_PREF_PATH);
+    }
+    fclose(fp);
+}
+
+static void save_volume_pref(void)
+{
+    FILE *fp = fopen(VOLUME_PREF_PATH, "w");
+
+    if (fp == NULL) {
+        printf("[Main] 警告: 音量偏好写不进去（%s）—— 本次有效，重启后回默认\n",
+               VOLUME_PREF_PATH);
+        return;
+    }
+    fprintf(fp, "%d\n", g_volume_pct);
+    fclose(fp);
+}
+
+/* 触摸屏音量控件的回调（LVGL 在主线程里调它）：±10% 一档。 */
+static void app_volume_step(int delta)
+{
+    g_volume_pct += delta * 10;
+    if (g_volume_pct < 0) {
+        g_volume_pct = 0;
+    }
+    if (g_volume_pct > 100) {
+        g_volume_pct = 100;
+    }
+
+    audio_set_volume(g_volume_pct);
+    save_volume_pref();
+    interview_ui_set_volume(g_volume_pct);
+    printf("[Main] 音量：%d%%\n", g_volume_pct);
+}
+
 /* ---------- 事件队列 ---------- */
 
 /* 工作线程调用 */
@@ -181,8 +232,39 @@ static void run_one_round(void)
     ai_rec_result_t rec;
     int rc;
     int attempt;
+    int is_new_session;
 
     memset(&resp, 0, sizeof(resp));
+
+    /* ---- 0. 开场白（仅新一场）----
+     * 用户要求：面试官先报岗位再请自我介绍 ——
+     * 「你好，你今天来面试「AI 应用开发」岗位，请简单介绍一下你自己。」
+     * 用云端 TTS 现合成（1~2 秒），不走 LLM：措辞固定、省一次模型调用。
+     * 合成失败就**跳过**，绝不因为开场白没出来就不让面试。 */
+    pthread_mutex_lock(&g_lock);
+    is_new_session = (g_session_id[0] == '\0');
+    pthread_mutex_unlock(&g_lock);
+    if (is_new_session) {
+        char line[160];
+        uint8_t *greeting_wav = NULL;
+        size_t greeting_len = 0;
+
+        snprintf(line, sizeof(line),
+                 "你好，你今天来面试「%s」岗位，请简单介绍一下你自己。",
+                 current_role());
+        if (cloud_tts_text(line, &greeting_wav, &greeting_len) == CLOUD_OK) {
+            printf("[Main] 开场白：%s\n", line);
+            (void)audio_play_wav(greeting_wav, greeting_len, &g_abort);
+            free(greeting_wav);
+        } else {
+            printf("[Main] 警告: 开场白合成失败，直接开始录音\n");
+        }
+        if (g_abort) {
+            printf("[Main] 本轮已被 K2 取消（开场白阶段）\n");
+            app_post_event(EVENT_ERROR);
+            return;
+        }
+    }
 
     /* ---- 1. 录音 ---- */
     rec = audio_record_wav(&wav, &wav_len, &g_abort);
@@ -599,10 +681,16 @@ int main(int argc, char *argv[])
     state_machine_init();
     init_buttons();
 
+    /* 音量：先读偏好（断电记住），再起界面 —— 界面上的音量控件要显示当前值。 */
+    load_volume_pref();
+    audio_set_volume(g_volume_pct);
+
     /* 屏幕界面：**附件**，初始化失败只告警、不中断面试（见 interview_ui.h）。 */
     if (interview_ui_init() == 0) {
         interview_ui_set_role(current_role());
         interview_ui_set_pressure(current_pressure());
+        interview_ui_set_volume(g_volume_pct);
+        interview_ui_set_volume_cb(app_volume_step);
     } else {
         printf("[Main] 屏幕不可用 —— 界面相关功能跳过，面试流程不受影响\n");
     }

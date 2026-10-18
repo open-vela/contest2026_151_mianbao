@@ -57,6 +57,13 @@ void cloud_init(void);
 int cloud_health_check(void);
 
 /*
+ * 文字转语音（2026-10-19，开场白用）：POST /api/test/tts {"text": ...}。
+ * 成功时 *wav 指向 malloc 出来的 WAV（含 44 字节头），调用方负责 free。
+ * 失败只返回负值 —— 开场白合成不出来不该拦住面试（调用方跳过即可）。
+ */
+int cloud_tts_text(const char *text, uint8_t **wav, size_t *wav_len);
+
+/*
  * 通知云端删除一场会话的记录（K2 长按"舍弃本场"用，2026-10-18）。
  *
  * 发的是 `DELETE /api/sessions/<sid>`：内存与落盘那份**一起删** ——

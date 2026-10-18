@@ -32,6 +32,13 @@ void interview_ui_set_role(const char *role);
 /* 当前压力档位变化 —— K2 赛前切换后调用（温和 / 标准 / 压力）。 */
 void interview_ui_set_pressure(const char *pressure);
 
+/* 触摸音量控件（2026-10-19）：每次按 ± 按钮上报 ±1，由调用方决定步长（一般 10%）。
+ * 回调运行在**主线程**（LVGL 的事件上下文）—— 与其它界面函数同一线程纪律。 */
+void interview_ui_set_volume_cb(void (*cb)(int delta));
+
+/* 当前音量百分比（0~100）—— 两页上的"音量 X%"都会更新。 */
+void interview_ui_set_volume(int percent);
+
 /* 会话开始/结束 → 切页：1 = 面试中页，0 = 待机页。只在真的变化时才动界面。 */
 void interview_ui_set_session(int in_session);
 
