@@ -115,7 +115,7 @@ static void build_live_page(void)
                LV_ALIGN_CENTER, 0, -60);
     g_live_role = make_label(g_page_live, "", g_font_body, UI_ROLE_COLOR,
                              LV_ALIGN_CENTER, 0, 25);
-    make_label(g_page_live, "请对着开发板回答，说完停顿两秒", g_font_hint,
+    make_label(g_page_live, "请对着开发板回答，说完停顿四秒", g_font_hint,
                UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 105);
 
     lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);   /* 开机先显示待机页 */
