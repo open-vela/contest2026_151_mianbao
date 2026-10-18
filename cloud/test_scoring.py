@@ -381,10 +381,17 @@ class TestStageInjection(unittest.TestCase):
         self.assertNotIn(self.BLOCK_HEADER, self.ask(5),
                          "参考块不该再放进 system prompt 了")
 
-    def test_开场那一段明确说了不要再让他自我介绍(self):
-        """真实数据里出现过：候选人一开口就自报家门，面试官却又让他"介绍一下自己"。
-        这一段就是冲着那个来的。"""
-        self.assertIn("不要再请他「介绍一下自己」", self.ask(1))
+    def test_开场段分情况处理_自报家门与试麦(self):
+        """2026-10-18 真机：候选人只说了「我以为你好。」，开场却答「刚才你提到的项目里」。
+
+        开场段必须**分情况**：说了自我介绍 → 接住、别再让他介绍；只说问候/试麦 →
+        请他自我介绍。⚠️ 断言行为（两个分支都在 + 反编造规则在），不锁具体措辞 ——
+        §11.41 的教训。
+        """
+        ask = self.ask(1)
+        self.assertIn("自我介绍", ask)
+        self.assertIn("试麦", ask, "只打招呼/试麦的退化分支不能丢")
+        self.assertIn("不要编造", ask, "反编造规则不能丢")
 
     def test_硬性要求仍在提示词末尾(self):
         """⚠️ §11.20 的修复靠它留在结尾（recency）。加了阶段块之后也得在。"""
@@ -409,7 +416,7 @@ class TestStageInjection(unittest.TestCase):
         """
         # 断言的是**行为要求**（那几句是不能丢的保证），不是措辞本身 ——
         # 措辞可以改，这几条要求改了就得回来改测试。
-        for round_number, fragment in ((1, "不要再让他自我介绍"),
+        for round_number, fragment in ((1, "试麦"),    # 开场段要留着"只打招呼/试麦"的分支
                                        (5, "技术追问"),
                                        (10, "只问这一句")):
             with self.subTest(round=round_number):

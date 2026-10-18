@@ -123,10 +123,21 @@ class TestPlanMatchesThePrompt(unittest.TestCase):
         prompt = self.skill["system_prompt"]
         self.assertIn("{stage_block}", prompt, "占位符不在，阶段注入不进去")
         self.assertTrue(prompt.rstrip().endswith(
-            "正确示例：您提到的这个项目挺有意思，能具体说说您在其中的角色，以及遇到的最大挑战吗？"),
+            "正确示例：能挑一个项目，具体说说您在其中负责哪一块，以及遇到的最大挑战吗？"),
             "【硬性要求】那段不在结尾了 —— 见台账 §11.20")
         self.assertLess(prompt.index("【面试纪律】"), prompt.index("{stage_block}"),
                         "阶段块应当排在【面试纪律】之后")
+
+    def test_开场段覆盖_只打招呼_的退化输入(self):
+        """2026-10-18 真机：候选人只说了「我以为你好。」，开场却答「刚才你提到的项目里」。
+
+        根因是开场段把"候选人刚做完自我介绍"写死了。这条锁住两件事：
+        ① 指令要覆盖"只打招呼 / 试麦"的分支；② 明确禁止引用他没说过的话。
+        """
+        opening = self.skill["stages"]["opening"]
+        self.assertIn("试麦", opening["instruction"])
+        self.assertIn("没有说过", opening["instruction"])
+        self.assertIn("不要引用", opening["brief"])
 
     def test_参考块不在_system_prompt_里(self):
         """2026-10-01 改（台账 §11.42）：参考块改拼在本轮 user 消息里、紧跟阶段要求。

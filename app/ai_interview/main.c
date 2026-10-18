@@ -533,10 +533,14 @@ int main(int argc, char *argv[])
         check_buttons();
 
         /* ---- 屏幕界面（附件，见 interview_ui.h）----
-         * 会话边界切页（有会话 = 面试中页）+ 每拍推进 LVGL。
-         * 会话状态只在锁内读一眼，变化时才动界面（g_ui_in_session 缓存）。 */
+         * 切页规则（2026-10-18 按用户反馈改）：**一轮开始就切**，不再等第一次回应。
+         *   live = 有会话 **或** 工作线程正在跑（录音/上传/播放）
+         * —— 以前只看会话，于是第 1 轮录音时屏上还停在待机页，面试官回应后才切，
+         *    用户的原话是"按下 K1 说话，等回应后才显示面试中…"。
+         * 第 1 轮被 K2 取消且没有会话时：busy 一落就自动回待机页 ✓。
+         * 会话状态与 busy 只在锁内读一眼，变化时才动界面（g_ui_in_session 缓存）。 */
         pthread_mutex_lock(&g_lock);
-        live = (g_session_id[0] != '\0');
+        live = (g_session_id[0] != '\0') || g_worker_busy;
         pthread_mutex_unlock(&g_lock);
 
         if (live != g_ui_in_session) {

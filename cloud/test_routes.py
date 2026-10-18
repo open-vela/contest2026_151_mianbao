@@ -90,6 +90,61 @@ class RouteTestCase(unittest.TestCase):
             return []
 
 
+class TestFinishedSessionGuard(RouteTestCase):
+    """已结束会话的两道云端闸（2026-10-18）—— 见 app.py 里 _finished_payload 的注释。
+
+    背景：文字演练页连发两条「结束面试」，同一场里生成了两份报告 + 两次评分。
+    """
+
+    def _finished_session(self):
+        session = cloud_app.session_manager.get_or_create_session(SID, "AI 应用开发")
+        session.add_user_message("结束面试")
+        session.add_ai_message(REPORT)
+        session.finish()
+        return session
+
+    def test_文字演练_已结束不再生成第二份报告(self):
+        self._finished_session()
+        with mock.patch.object(cloud_app, "llm_interview") as llm, \
+             mock.patch.object(cloud_app, "_start_scoring") as scoring:
+            response = self.client.post("/api/interview/text",
+                                        json={"session_id": SID, "role": "AI 应用开发",
+                                              "text": "结束面试"})
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["next_action"], "finish")
+        self.assertEqual(body["text"], REPORT, "应回既有报告，而不是新生成一份")
+        self.assertFalse(llm.called, "已结束的会话不该再调 LLM")
+        self.assertFalse(scoring.called, "也不该再触发评分")
+
+    def test_文字演练_并发请求被拒绝(self):
+        """同一会话同时只处理一个请求 —— 报告轮 ~10 秒的窗口里连发会踩到。"""
+        cloud_app.session_manager.get_or_create_session(SID, "AI 应用开发")
+        with mock.patch.object(cloud_app, "_inflight", {SID}):   # 模拟"正在处理"
+            response = self.client.post("/api/interview/text",
+                                        json={"session_id": SID, "role": "AI 应用开发",
+                                              "text": "你好"})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("稍候", response.get_json()["error"])
+
+    def test_板子链路_已结束返回既有报告且不跑_ASR_LLM(self):
+        self._finished_session()
+        with mock.patch.object(cloud_app, "asr_audio_to_text") as asr, \
+             mock.patch.object(cloud_app, "llm_interview") as llm, \
+             mock.patch.object(cloud_app, "tts_text_to_audio",
+                               return_value="ZmFrZQ=="):
+            response = self.client.post("/api/interview",
+                                        json={"session_id": SID, "role": "AI 应用开发",
+                                              "state": "recording_finished",
+                                              "audio": "ZmFrZQ=="})
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["next_action"], "finish")
+        self.assertEqual(body["text"], REPORT)
+        self.assertFalse(asr.called, "已结束的会话不该再跑 ASR")
+        self.assertFalse(llm.called, "已结束的会话不该再调 LLM")
+
+
 class TestBasicRoutes(RouteTestCase):
     def test_health(self):
         r = self.client.get("/api/health")

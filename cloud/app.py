@@ -117,8 +117,57 @@ else:
                    f"不注入参考题。检查 question_bank/data/ 是否随代码一起拷过去了。")
 
 
+# ---- 已结束会话的幂等返回 & 同一会话的并发闸（2026-10-18）----
+#
+# 背景（真机日志）：文字演练页连发两条「结束面试」→ 同一场里生成**两份报告**、
+# 触发两次评分、历史里出现连续两条候选人消息。前端有防连点（按钮置灰），但报告轮
+# ~10 秒的窗口里仍可能被绕过 —— 在服务端兜底：
+#   1. **已结束**：不跑 ASR/LLM、不写历史，原样回最后一条（报告）；
+#   2. **并发**：同一 session_id 同时只处理一个请求，后来的直接 409。
+# 板子那条链路是单工作线程，正常**永远不会**触发这两条 —— 它们只为
+# "网页/脚本乱发" 与 "网络重试" 兜底。
+_inflight_lock = threading.Lock()
+_inflight = set()
+
+
+def _begin_request(session_id):
+    with _inflight_lock:
+        if session_id in _inflight:
+            return False
+        _inflight.add(session_id)
+        return True
+
+
+def _end_request(session_id):
+    with _inflight_lock:
+        _inflight.discard(session_id)
+
+
+def _finished_payload(session_id, session):
+    """已结束的会话再收到请求：幂等返回报告。
+
+    TTS 照常合成 —— 板子的成功判据是"tts_audio 非空"，返回空音频会被它当成
+    故障去重试（见 network_client 的判据）。多花一次 TTS 换的是"同一场最多
+    一份报告"。
+    """
+    last = ""
+    for message in reversed(session.get_history()):
+        if message.get("role") == "assistant":
+            last = message.get("content", "")
+            break
+    return {
+        "type": "report",
+        "text": last,
+        "tts_audio": tts_text_to_audio(last, style="专业、友好、有洞察力的面试官") if last else "",
+        "session_id": session_id,
+        "next_action": "finish",
+        "user_text": "",
+    }
+
+
 @app.route('/api/interview', methods=['POST'])
 def handle_interview():
+    acquired = False
     try:
         data = request.get_json()
         if not data:
@@ -146,6 +195,19 @@ def handle_interview():
         # 无界增长（会话现在还会落盘，磁盘那份不受影响）。
         if is_new:
             session_manager.clean_expired_sessions()
+
+        # 已结束：幂等返回既有报告（见 _finished_payload 的注释）
+        if session.is_finished:
+            logger.info(f"[session={session_id}] 已结束，返回既有报告（不重复处理）")
+            return jsonify(_finished_payload(session_id, session))
+
+        # 并发闸：同一会话同时只处理一个请求
+        if not _begin_request(session_id):
+            logger.warning(f"[session={session_id}] 上一条还在处理，拒绝并发请求")
+            return jsonify({"type": "error", "text": "上一条还在处理，请稍候",
+                            "tts_audio": "", "session_id": session_id,
+                            "next_action": "continue"}), 409
+        acquired = True
 
         # 如果有音频数据，先进行 ASR 识别
         user_text = ""
@@ -238,6 +300,9 @@ def handle_interview():
             "session_id": session_id if 'session_id' in locals() else '',
             "next_action": "continue"
         }), 500
+    finally:
+        if acquired:
+            _end_request(session_id)
 
 
 @app.route('/api/interview/text', methods=['POST'])
@@ -269,11 +334,27 @@ def handle_interview_text():
     if not session_id:
         session_id = str(uuid.uuid4())
 
+    acquired = False
     try:
         session = session_manager.get_or_create_session(session_id, role)
         # 已存在的会话**以它自己的岗位为准**：刷新页面之后客户端可能忘了当初选的是哪个，
         # 而面试官人设、题库检索都跟着这个值走 —— 不能让客户端的一次疏忽把整场带偏。
         role = session.role
+
+        # 已结束：幂等返回（文字演练不走 TTS，所以这里用轻量版，不白合成音频）
+        if session.is_finished:
+            last = next((m.get("content", "") for m in reversed(session.get_history())
+                         if m.get("role") == "assistant"), "")
+            logger.info(f"[session={session_id}] 已结束，返回既有报告（不重复处理）")
+            return jsonify({"type": "report", "text": last,
+                            "session_id": session_id, "next_action": "finish"})
+
+        # 并发闸：报告轮要跑 ~10 秒，这期间连发第二条就会生成两份报告（2026-10-18 实测）
+        if not _begin_request(session_id):
+            logger.warning(f"[session={session_id}] 上一条还在处理，拒绝并发请求")
+            return jsonify({"error": "上一条还在处理，请稍候再发",
+                            "session_id": session_id, "next_action": "continue"}), 409
+        acquired = True
 
         if state == "start":
             result = llm_interview(role, session.get_history(), "start")
@@ -307,6 +388,9 @@ def handle_interview_text():
         logger.error(f"文字演练出错: {error}", exc_info=True)
         return jsonify({"error": f"服务器内部错误: {error}", "text": "",
                         "session_id": session_id, "next_action": "continue"}), 500
+    finally:
+        if acquired:
+            _end_request(session_id)
 
 
 @app.route('/api/health', methods=['GET'])
