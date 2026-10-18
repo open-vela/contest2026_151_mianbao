@@ -184,11 +184,13 @@ def synthesize_answer(base_url: str, text: str) -> str:
     return body["audio"]
 
 
-def run_round(base_url: str, session_id: str, role: str, audio_base64: str) -> dict:
+def run_round(base_url: str, session_id: str, role: str, audio_base64: str,
+              pressure: str = "标准") -> dict:
     """打一轮真实请求。`state` 固定为 recording_finished —— 见模块 docstring 的坑 1。"""
     status, body = post_json(f"{base_url}/api/interview", {
         "session_id": session_id,
         "role": role,
+        "pressure": pressure,                 # 压力档位（温和/标准/压力）
         "state": "recording_finished",        # ← 少一个字，ASR 就被整段跳过
         "audio": audio_base64,
         "audio_format": "wav",
@@ -271,6 +273,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="PC 端面试排练（11 轮端云链路体检）")
     parser.add_argument("--base-url", default="http://127.0.0.1:5000")
     parser.add_argument("--role", default="AI 应用开发", help="面试岗位，默认演示岗位")
+    parser.add_argument("--pressure", default="标准",
+                        help="压力档位：温和 / 标准 / 压力（默认标准，与云端默认一致）")
     parser.add_argument("--rounds", type=int, default=EXPECTED_ROUNDS,
                         help=f"跑几轮（默认 {EXPECTED_ROUNDS}；小于 {EXPECTED_ROUNDS} 时"
                              f"不校验报告轮 —— 报告是按轮次阈值触发的，还没到）")
@@ -314,7 +318,8 @@ def main() -> int:
         print(f"✅ 健康检查 HTTP {status}\n")
         return self_check_silence(base_url, args.role)
 
-    print(f"排练目标：{base_url}  岗位={args.role}  轮数={args.rounds}  session={session_id}")
+    print(f"排练目标：{base_url}  岗位={args.role}  压力={args.pressure}  "
+          f"轮数={args.rounds}  session={session_id}")
     print("-" * 78)
     print(f"✅ 健康检查 HTTP {status}\n")
 
@@ -345,7 +350,7 @@ def main() -> int:
                  f" —— 优先检查 MIMO_API_KEY 是否还在进程内存里")
             break
 
-        result = run_round(base_url, session_id, args.role, audio)
+        result = run_round(base_url, session_id, args.role, audio, args.pressure)
         elapsed = time.time() - started
         payload = result["body"] or {}
         text = payload.get("text", "") or ""

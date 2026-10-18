@@ -7,7 +7,8 @@ import os
 import threading
 import uuid
 import logging
-from llm_service import llm_interview, score_interview
+from llm_service import (DEFAULT_PRESSURE, PRESSURE_LEVELS, llm_interview,
+                         score_interview)
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from session_manager import SessionManager
@@ -179,6 +180,11 @@ def handle_interview():
         # 默认岗位与端侧 Kconfig 的默认值保持一致（板子每次都显式带 role，
         # 这里只影响手工 curl 测试）。改成题库里有的岗位，手工测时也能拿到参考题。
         role = data.get('role', 'AI 应用开发')
+        # 压力档位：客户端传什么就认什么（未知值退回标准）；实际生效值以
+        # **建会话时**为准（见 get_or_create_session 与 llm_interview 调用点）。
+        pressure = data.get('pressure')
+        if pressure not in PRESSURE_LEVELS:
+            pressure = DEFAULT_PRESSURE
         state = data.get('state', '')
         history = data.get('history', [])
 
@@ -186,9 +192,9 @@ def handle_interview():
             session_id = str(uuid.uuid4())
             logger.info(f"创建新会话: {session_id}")
 
-        # 获取或创建会话
+        # 获取或创建会话（压力档位同 role：建会话时钉住）
         is_new = session_manager.get_session(session_id) is None
-        session = session_manager.get_or_create_session(session_id, role)
+        session = session_manager.get_or_create_session(session_id, role, pressure)
 
         # 只在"开新会话"这一条路径上清理过期会话：正在进行的会话绝不会被扫到
         # —— 走这条路径时它根本不在内存里。清理是为了让长期挂着的进程内存不
@@ -247,7 +253,8 @@ def handle_interview():
 
         # 调用 LLM 生成回复
         logger.info(f"[session={session_id}] 调用 LLM...")
-        llm_result = llm_interview(role, session.get_history(), state, audio_base64)
+        llm_result = llm_interview(role, session.get_history(), state, audio_base64,
+                                   session.pressure)
         ai_text = llm_result.get('text', '')
         next_action = llm_result.get('next_action', 'continue')
 
@@ -327,6 +334,9 @@ def handle_interview_text():
     """
     data = request.get_json() or {}
     role = data.get("role") or "AI 应用开发"
+    pressure = data.get("pressure")
+    if pressure not in PRESSURE_LEVELS:
+        pressure = DEFAULT_PRESSURE
     state = data.get("state") or "recording_finished"
     answer = (data.get("text") or "").strip()
     session_id = data.get("session_id") or ""
@@ -336,9 +346,10 @@ def handle_interview_text():
 
     acquired = False
     try:
-        session = session_manager.get_or_create_session(session_id, role)
-        # 已存在的会话**以它自己的岗位为准**：刷新页面之后客户端可能忘了当初选的是哪个，
-        # 而面试官人设、题库检索都跟着这个值走 —— 不能让客户端的一次疏忽把整场带偏。
+        session = session_manager.get_or_create_session(session_id, role, pressure)
+        # 已存在的会话**以它自己的岗位与压力档位为准**：刷新页面之后客户端可能忘了
+        # 当初选的是哪个，而面试官人设、题库检索、追问强度都跟着它们走 ——
+        # 不能让客户端的一次疏忽把整场带偏。
         role = session.role
 
         # 已结束：幂等返回（文字演练不走 TTS，所以这里用轻量版，不白合成音频）
@@ -357,12 +368,14 @@ def handle_interview_text():
         acquired = True
 
         if state == "start":
-            result = llm_interview(role, session.get_history(), "start")
+            result = llm_interview(role, session.get_history(), "start",
+                                   pressure=session.pressure)
         else:
             if not answer:
                 return jsonify({"error": "文本不能为空"}), 400
             session.add_user_message(answer)
-            result = llm_interview(role, session.get_history(), state)
+            result = llm_interview(role, session.get_history(), state,
+                                   pressure=session.pressure)
 
         ai_text = result.get("text", "")
         next_action = result.get("next_action", "continue")

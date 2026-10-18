@@ -220,6 +220,26 @@ static inline const char *app_role_at(int index)
     return roles[index];
 }
 
+/* ---- 压力档位表（K2 在"待机且无会话"时循环切换）----
+ *
+ * ⚠️ 三个名字必须与云端 `skills/next_question.json` 的 `pressure` 键、以及
+ * `cloud/llm_service.PRESSURE_LEVELS` **一字不差**；对不上时云端退回「标准」
+ * （静默、不报错）。
+ * 默认「标准」= 下标 1（与云端默认一致）。会话一旦建立，档位就钉死了 ——
+ * 中途按 K2 不会改（同岗位）。
+ */
+#define APP_PRESSURE_COUNT 3
+
+static inline const char *app_pressure_at(int index)
+{
+    static const char *const levels[APP_PRESSURE_COUNT] = { "温和", "标准", "压力" };
+
+    if (index < 0 || index >= APP_PRESSURE_COUNT) {
+        return NULL;
+    }
+    return levels[index];
+}
+
 /* 岗位名 → 下标；不在表里返回 -1（例如 ROLE 环境变量给的是自定义值）。 */
 static inline int app_role_index(const char *role)
 {

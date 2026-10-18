@@ -406,7 +406,7 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
      */
     sid = (req->session_id != NULL) ? req->session_id : "";
     body_cap = b64_len + strlen(sid) + strlen(req->role) +
-               strlen(req->state) + 256;
+               strlen(req->pressure) + strlen(req->state) + 256;
     body = malloc(body_cap);
     if (body == NULL) {
         ret = CLOUD_ERR_NOMEM;
@@ -415,8 +415,8 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
 
     snprintf(body, body_cap,
              "{\"session_id\":\"%s\",\"audio\":\"%s\",\"audio_format\":\"wav\","
-             "\"role\":\"%s\",\"state\":\"%s\",\"history\":[]}",
-             sid, b64, req->role, req->state);
+             "\"role\":\"%s\",\"pressure\":\"%s\",\"state\":\"%s\",\"history\":[]}",
+             sid, b64, req->role, req->pressure, req->state);
 
     /* body 已拼好，立刻释放 base64 缓冲，降低峰值内存 */
     free(b64);

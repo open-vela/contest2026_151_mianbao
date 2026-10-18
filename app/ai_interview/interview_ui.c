@@ -33,6 +33,8 @@ static lv_obj_t *g_page_idle;
 static lv_obj_t *g_page_live;
 static lv_obj_t *g_idle_role;
 static lv_obj_t *g_live_role;
+static lv_obj_t *g_idle_pressure;
+static lv_obj_t *g_live_pressure;
 
 static const lv_font_t *g_font_title;
 static const lv_font_t *g_font_body;
@@ -101,6 +103,11 @@ static void build_idle_page(void)
     g_idle_role = make_label(g_page_idle, "当前岗位：", g_font_body, UI_ROLE_COLOR,
                              LV_ALIGN_CENTER, 0, 30);
 
+    /* 压力档位：赛前按 K2 循环切换 —— 与岗位一起构成"开面参数" */
+    g_idle_pressure = make_label(g_page_idle, "压力档位：标准（按 K2 切换）",
+                                 g_font_hint, UI_HINT_COLOR,
+                                 LV_ALIGN_CENTER, 0, 82);
+
     make_label(g_page_idle, "按 K1 开始面试", g_font_body, UI_TEXT_COLOR,
                LV_ALIGN_CENTER, 0, 120);
     make_label(g_page_idle, "按 K3 切换岗位（两场面试之间）", g_font_hint,
@@ -115,6 +122,8 @@ static void build_live_page(void)
                LV_ALIGN_CENTER, 0, -60);
     g_live_role = make_label(g_page_live, "", g_font_body, UI_ROLE_COLOR,
                              LV_ALIGN_CENTER, 0, 25);
+    g_live_pressure = make_label(g_page_live, "", g_font_hint, UI_HINT_COLOR,
+                                 LV_ALIGN_CENTER, 0, 68);
     make_label(g_page_live, "请对着开发板回答，说完停顿两秒", g_font_hint,
                UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 105);
 
@@ -184,6 +193,22 @@ void interview_ui_set_role(const char *role)
     }
     if (g_live_role != NULL) {
         lv_label_set_text_fmt(g_live_role, "岗位：%s", role);
+    }
+}
+
+void interview_ui_set_pressure(const char *pressure)
+{
+    if (pressure == NULL || pressure[0] == '\0') {
+        return;
+    }
+    if (!g_ready) {
+        return;
+    }
+    if (g_idle_pressure != NULL) {
+        lv_label_set_text_fmt(g_idle_pressure, "压力档位：%s（按 K2 切换）", pressure);
+    }
+    if (g_live_pressure != NULL) {
+        lv_label_set_text_fmt(g_live_pressure, "压力档位：%s", pressure);
     }
 }
 

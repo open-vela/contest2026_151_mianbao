@@ -902,13 +902,23 @@
   var ROLES = ["AI 应用开发", "AI Agent 开发", "大模型算法工程师",
                "AI/ML Engineer", "Data Scientist", "Data Analyst"];
 
+  // 压力档位（2026-10-19）：必须与云端 llm_service.PRESSURE_LEVELS 及
+  // skills/next_question.json 的 pressure 键一字不差；默认「标准」。
+  var PRESSURES = ["温和", "标准", "压力"];
+
   var textRole = ROLES[0];
+  var textPressure = PRESSURES[1];
   var starting = false;
 
   function renderStarter(unfinished) {
-    var i, opts = "";
+    var i, opts = "", popts = "";
     for (i = 0; i < ROLES.length; i++) {
       opts += '<option value="' + esc(ROLES[i]) + '">' + esc(ROLES[i]) + "</option>";
+    }
+    for (i = 0; i < PRESSURES.length; i++) {
+      popts += '<option value="' + esc(PRESSURES[i]) + '"' +
+               (PRESSURES[i] === "标准" ? " selected" : "") + ">" +
+               esc(PRESSURES[i]) + "</option>";
     }
 
     var html = '<div class="starter"><h2>文字演练</h2>' +
@@ -929,6 +939,7 @@
     }
 
     html += '<label>面试岗位 <select id="roleSel">' + opts + "</select></label>" +
+      '<label>压力档位 <select id="pressureSel">' + popts + "</select></label>" +
       '<button class="btn" id="startBtn" style="font-size:14px;padding:9px 18px"' +
       (unfinished.length ? " disabled" : "") + ">开始面试</button></div>";
 
@@ -965,13 +976,15 @@
     var btn = document.getElementById("startBtn");
     var sel = document.getElementById("roleSel");
     textRole = sel ? sel.value : ROLES[0];
+    var psel = document.getElementById("pressureSel");
+    textPressure = psel ? psel.value : PRESSURES[1];
     // ⚠️ 这里**不用** showPending()：此刻消息区（#main）还是隐藏的（开场页状态），
     //    气泡画出来也看不见。这一下的反馈靠按钮文字 + 状态栏那两条，够了。
     if (btn) { btn.disabled = true; btn.textContent = "正在准备…"; }
     // ⚠️ 即时反馈：这一下要等 LLM（一两秒）。不给任何反馈，用户的感觉就是"卡住了"
     //    —— 这是 2026-10-01 用户报的第一个问题，延迟本身是模型的，不是我们的。
     setStatus("ok", "面试官正在准备…");
-    textPost({ role: textRole, state: "start" })
+    textPost({ role: textRole, pressure: textPressure, state: "start" })
       .then(function (d) {
         if (!d.session_id) { throw new Error(d.error || "创建会话失败"); }
         SID = d.session_id;
@@ -1001,7 +1014,7 @@
     setStatus("ok", "面试官正在思考…");   // 状态栏那条是给"看不见气泡"的时刻兜底的
     showPending(text);                     // ★ 先把你说的那句话画出来 —— 别等
     elAnswerBox.value = "";                // 输入框立刻清空，与"已经发出去了"一致
-    textPost({ session_id: SID, role: textRole, text: text })
+    textPost({ session_id: SID, role: textRole, pressure: textPressure, text: text })
       .then(function (d) {
         if (d.error) { throw new Error(d.error); }
         tick();                        // 数据一到，render 第一行就把临时气泡换成真消息

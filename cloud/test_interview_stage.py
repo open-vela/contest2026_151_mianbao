@@ -128,6 +128,24 @@ class TestPlanMatchesThePrompt(unittest.TestCase):
         self.assertLess(prompt.index("【面试纪律】"), prompt.index("{stage_block}"),
                         "阶段块应当排在【面试纪律】之后")
 
+    def test_压力档位的名单与代码对得上(self):
+        """提示词里的三档必须与 `llm_service.PRESSURE_LEVELS` 一字不差。
+
+        读源码取常量（不 import llm_service —— 那会把 openai 拖进来，
+        把本文件从"零依赖"那一档赶走，同 test_轮数与结束判据对得上 的取舍）。
+        """
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_service.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        found = re.search(r"^PRESSURE_LEVELS\s*=\s*\((.+?)\)", source, re.M)
+        self.assertIsNotNone(found, "llm_service.py 里没找到 PRESSURE_LEVELS")
+        levels = re.findall(r'"([^"]+)"', found.group(1))
+        self.assertTrue(levels)
+        self.assertEqual(set(self.skill.get("pressure") or {}), set(levels),
+                         "skills/next_question.json 的 pressure 键与代码名单漂移了")
+        self.assertTrue((self.skill.get("pressure_safety") or "").strip(),
+                        "安全边界不能丢：压力加在问题上，不加在人身上")
+
     def test_开场段覆盖_只打招呼_的退化输入(self):
         """2026-10-18 真机：候选人只说了「我以为你好。」，开场却答「刚才你提到的项目里」。
 
