@@ -77,6 +77,10 @@ static int g_evq_tail = 0;
 static char g_session_id[64];
 static char g_last_text[256];
 
+/* 待删除的会话 id（K2 长按"舍弃本场"设置，工作线程消费）。
+ * 网络调用留在工作线程 —— 主循环每 100ms 一拍，塞不进最多 30 秒的 HTTP。 */
+static char g_discard_sid[64];
+
 /* ---- 当前岗位（K3 循环切换）----
  *
  * -1 = 还没按过 K3，跟随 app_role()（ROLE 环境变量 / Kconfig 默认）。
@@ -295,6 +299,27 @@ static void *pipeline_worker(void *arg)
 
     for (;;) {
         app_cmd_t cmd;
+        char discard_sid[64];
+
+        /* ---- 待处理的"舍弃本场"通知（K2 长按设置）----
+         * 网络调用必须留在工作线程：主循环每 100ms 一拍，塞个最多 30 秒的 HTTP
+         * 进去，按键和 LED 都会僵住（同文件顶部的线程模型注释）。
+         * 忙的时候它排在下一轮之后 —— 没关系：长按同时置了 g_abort，当前这一轮
+         * 会很快退出，然后这里就把 DELETE 发出去。 */
+        pthread_mutex_lock(&g_lock);
+        strncpy(discard_sid, g_discard_sid, sizeof(discard_sid) - 1);
+        discard_sid[sizeof(discard_sid) - 1] = '\0';
+        g_discard_sid[0] = '\0';
+        pthread_mutex_unlock(&g_lock);
+
+        if (discard_sid[0] != '\0') {
+            printf("[Main] 通知云端删除本场记录（session=%s）...\n", discard_sid);
+            if (cloud_discard_session(discard_sid) == CLOUD_OK) {
+                printf("[Main] 云端记录已删除（/history 里不会再出现）\n");
+            } else {
+                printf("[Main] 警告: 云端删除失败 —— /history 里可能仍显示「进行中」\n");
+            }
+        }
 
         pthread_mutex_lock(&g_lock);
         cmd = g_cmd;
@@ -462,11 +487,15 @@ static void check_buttons(void)
                 g_key2_hold++;
             }
             if (g_key2_hold == K2_DISCARD_TICKS) {
-                printf("[Main] K2 长按 —— 舍弃本场（不生成报告），回到待机\n");
-                g_abort = 1;
+                printf("[Main] K2 长按 —— 舍弃本场（不生成报告，并删除本场记录），回到待机\n");
+                g_abort = 1;                     /* 正在录音/上传/播放的话尽快退出 */
                 pthread_mutex_lock(&g_lock);
+                strncpy(g_discard_sid, g_session_id, sizeof(g_discard_sid) - 1);
+                g_discard_sid[sizeof(g_discard_sid) - 1] = '\0';
                 g_session_id[0] = '\0';
                 pthread_mutex_unlock(&g_lock);
+                /* 真正的删除由工作线程发（见 pipeline_worker 开头）——
+                 * 用户要的是"连记录都不要"，所以不是留在 /history 里当"未结束"。 */
             }
         } else {
             g_key2_hold = 0;

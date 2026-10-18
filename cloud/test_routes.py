@@ -145,6 +145,35 @@ class TestFinishedSessionGuard(RouteTestCase):
         self.assertFalse(llm.called, "已结束的会话不该再调 LLM")
 
 
+class TestDiscardSession(RouteTestCase):
+    """`DELETE /api/sessions/<sid>` —— 板子 K2 长按"舍弃本场"用（2026-10-18）。
+
+    用户要的是"这次记录直接不要了"：不是留一条"未结束"，而是内存 + 存档一起删。
+    """
+
+    def test_舍弃会话_内存与磁盘一起删(self):
+        cloud_app.session_manager.get_or_create_session(SID, "AI 应用开发")
+        session_store.save(snapshot(SID))
+        self.assertEqual(len(self.disk_files()), 1, "前置：先有一份存档")
+
+        response = self.client.delete(f"/api/sessions/{SID}")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["discarded"])
+        self.assertIsNone(cloud_app.session_manager.get_session(SID), "内存里该没了")
+        self.assertEqual(self.disk_files(), [], "落盘那份也该删")
+
+    def test_舍弃不存在的会话也算成功(self):
+        """幂等：板子重发一次 DELETE 不该报错（网络重试会走到这里）。"""
+        response = self.client.delete(f"/api/sessions/{SID}")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["discarded"])
+
+    def test_非法_id_被拒(self):
+        """id 会拼进文件名 —— 形状不对的一律 400（同 session_store 的纪律）。"""
+        response = self.client.delete("/api/sessions/bad.dot")
+        self.assertEqual(response.status_code, 400)
+
+
 class TestBasicRoutes(RouteTestCase):
     def test_health(self):
         r = self.client.get("/api/health")

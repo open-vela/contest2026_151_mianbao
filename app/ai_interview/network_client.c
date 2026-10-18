@@ -111,6 +111,57 @@ void cloud_init(void)
     g_initialized = 1;
 }
 
+/* ---------- 舍弃会话 ---------- */
+
+/*
+ * 只向工作线程暴露（主线程不得调用）—— 同本文件其它网络函数：
+ * libcurl 的阻塞调用 + 大栈要求都只在 worker 线程里成立，见 main.c 顶部注释。
+ */
+int cloud_discard_session(const char *session_id)
+{
+    CURL *curl;
+    CURLcode rc;
+    struct mem_chunk chunk = { NULL, 0 };
+    long status = 0;
+    char url[256];
+
+    if (!g_initialized) {
+        cloud_init();
+    }
+    if (session_id == NULL || session_id[0] == '\0') {
+        return CLOUD_ERR_HTTP;
+    }
+
+    snprintf(url, sizeof(url), "%s/api/sessions/%s",
+             app_cloud_base_url(), session_id);
+
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        return CLOUD_ERR_NOMEM;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+    rc = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    free(chunk.memory);
+
+    if (rc != CURLE_OK) {
+        return CLOUD_ERR_HTTP;
+    }
+    if (status < 200 || status >= 300) {
+        return CLOUD_ERR_HTTP;
+    }
+    return CLOUD_OK;
+}
+
 /* ---------- 健康检查 ---------- */
 
 int cloud_health_check(void)

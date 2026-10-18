@@ -39,6 +39,14 @@ class SessionManager:
         session = InterviewSession(session_id, role)
         self.sessions[session_id] = session
         return session
+    def discard_session(self, session_id: str) -> bool:
+        """舍弃一场会话：只从**内存**移除（落盘那份由 session_store.delete 删）。
+
+        与 `finish()` 的区别：finish 是"正常结束、要出报告"；discard 是"这整场
+        **不要了**"—— 用于误触 K1 / 岗位选错（板子 K2 长按）。
+        """
+        return self.sessions.pop(session_id, None) is not None
+
     def get_session(self, session_id: str):
         return self.sessions.get(session_id)
     def clean_expired_sessions(self, max_age: int = 3600):

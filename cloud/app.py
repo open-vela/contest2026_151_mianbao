@@ -432,6 +432,26 @@ def history():
     return jsonify(snap)
 
 
+@app.route('/api/sessions/<session_id>', methods=['DELETE'])
+def discard_session(session_id):
+    """舍弃一场面试：**内存 + 落盘一并删除**（板子 K2 长按用，2026-10-18）。
+
+    用户要的是"误触 K1 / 岗位选错时**连记录都不要**" —— 所以不是标记结束（那会在
+    /history 里留一条"未结束"，正是用户抱怨的现象），而是直接删：列表里消失、不会再被
+    评分或导出，也就不出现在任何视图里。
+
+    ⚠️ 与"正常结束"（finish → 出报告）是两条路：这里**不生成报告**。
+    """
+    if not session_store.is_valid_id(session_id):
+        return jsonify({"error": "非法的 session_id"}), 400
+
+    in_memory = session_manager.discard_session(session_id)
+    disk_removed = session_store.delete(session_id)
+    logger.info(f"[舍弃] session={session_id} 内存={in_memory} 落盘删除={disk_removed}")
+    return jsonify({"discarded": True, "session_id": session_id,
+                    "was_in_memory": in_memory, "disk_removed": disk_removed})
+
+
 @app.route('/api/sessions', methods=['GET'])
 def sessions():
     """历史场次列表（只读）。
