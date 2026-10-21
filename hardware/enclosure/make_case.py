@@ -23,50 +23,62 @@ import numpy as np
 import trimesh
 
 # ---------------------------------------------------------------- 尺寸参数
-BOARD_W = 83.8          # 板宽（实测 83~84）
-BOARD_L = 73.0          # 板长（实测）
-CLEAR = 0.6             # 板与内壁间隙（单边）
+# ⚠️ 2026-10-21 第二轮（3D 打印试装后修正）。第一版只量了裸 PCB（83.8×73），
+#    漏掉按钮/接口凸起 → 装不下、孔位偏。以下基准按**含凸起的总外廓**实测。
+PCB_W = 83.8            # 裸板宽（屏幕"与板同宽"仍按它）
+PCB_L = 73.0            # 裸板长
+TOTAL_W = 88.0          # 总宽：端子插口凸起端 → USB-A/按键凸起端（实测）
+TOTAL_L = 75.5          # 总长：PCB 上缘 → 底边接口凸起端（实测）
+PROT_LEFT = 2.0         # 端子侧凸起：腔体左内壁基准 → PCB 左缘（估）
+PIN_PROT = 4.2          # 板底焊针长：USB-C 口心 = 最低凸起 +5mm ⇒ 反推 4.2
+CLEAR = 1.0             # 单边余量（旧 0.6 太紧，且吸收树脂打印收缩）
 WALL = 2.5              # 侧壁厚
 FLOOR = 3.0             # 底板厚
-STD_H = 6.0             # 铜柱高（底板面到板背面）
+STD_H = 6.0             # 屏幕铜柱高（穿板，板下也露出）
 BOARD_T = 1.6           # 板厚
 SCREEN_TOP_Z = 14.0     # 板面到屏幕顶面的高度差（实测）
-RIM_Z = STD_H + BOARD_T + SCREEN_TOP_Z + 1.4   # 口沿高度 ≈ 26
+
+# 竖直基准（全部从壳底面 Z=0 起算 —— 旧版开孔漏加了 FLOOR，整体偏低 3mm）
+Z_BOARD_BOT = FLOOR + PIN_PROT          # 板背面（焊针落在底板上）
+Z_BOARD_TOP = Z_BOARD_BOT + BOARD_T     # 板面
+Z_USBC = FLOOR + 5.0                    # USB-C 口心：最低凸起 +5mm（实测）
+RIM_Z = Z_BOARD_TOP + SCREEN_TOP_Z + 1.4   # 口沿 ≈ 24.2
 TOP_T = 3.0             # 面框厚
 SKIRT_H = 8.0           # 面框裙边高（扣在外壁上）
 SKIRT_T = 2.2           # 裙边厚
 
-# 铜柱（= 底板上的 4 个 M3 孔位）：间距实测 79 × 48.5
+# 铜柱（屏幕柱穿板，底板留孔兼作柱端让位）：间距实测 79 × 48.5
 STD_DX = 79.0
 STD_DY = 48.5
-STD_X0 = 2.4            # 左孔中心距板左缘（按居中算：83.8-79=4.8 → 2.4/2.4）
-STD_Y0 = 20.6           # 上排孔距板上缘（照片读数；下排 = 20.6+48.5 = 69.1）
+STD_X0 = 2.4            # 左柱中心距 PCB 左缘
+STD_Y0 = 20.6           # 上排柱距 PCB 上缘（下排 = 20.6+48.5 = 69.1）
 STD_HOLE = 3.4          # M3 过孔
 
 # 屏幕（面板外形）
 SCR_LEN = 56.0          # 实测
-SCR_OFF_Y = 17.0        # 屏幕顶边距板上缘（实测"约18"，取 17 让远边与板边齐）
-# 屏幕宽度 = 板宽（实测"与板子宽一样"）→ 面框两侧只能压 1.5mm 边
+SCR_OFF_Y = 17.0        # 屏幕顶边距 PCB 上缘
+# 屏幕宽度 = PCB 宽（与板同宽）
 
-# 各接口开孔（沿边位置来自背面照片读数，单位 mm；±1mm）
-TERM_Y0, TERM_Y1 = 22.8, 58.9   # 端子组（CAN×2 + RS485×2）沿边跨度（实测 35 长）
-TERM_H = 7.0                    # 端子高出板面（实测）
-TERM_Z0 = STD_H + BOARD_T       # 从板面起
-USBA_Y = 33.5                   # USB HOST 中心
-# ⚠️ 单层/双层有过拉锯：宣传照看着是上下两层，用户实物在手确认**只有 1 个口**
-# （"那个位置放不下 2 个 U 盘"）—— 2026-10-17 定案：**默认单层**（实测 13×5.5 + 余量），
-# 双层版仍作为变体输出（case_bottom_usb_dual.stl），万一换板型可直接用。
-USBA_W, USBA_H = 14.0, 6.5      # 单层开口（默认）
-USBC_XS = (16.5, 34.8)          # 两个 USB-C 中心（照片读数）
-USBC_W, USBC_H = 9.0, 3.5       # 实测 8.5×3 + 余量
-TF_X = 53.0                     # TF 卡中心（照片读数）
-TF_W, TF_H = 15.5, 2.4          # 实测 15×2 + 余量
-KEY_YS = (63.7, 56.1, 47.8)     # K1/K2/K3 中心（间距实测 7.7）
-KEY_D = 3.2                     # 按键过孔（实测帽径 2.1 + 余量）
-KEY_Z = STD_H + BOARD_T + 1.0   # 孔心高度（板面上 1mm）
+# ---- 各接口开孔（2026-10-21 卡尺实测）----
+# 底边（USB-C/TF/LCD&TP）：X 参考点 = **端子插口凸起端**（腔体左内壁 + CLEAR）
+USBC1_X0, USBC2_X0 = 12.5, 26.0   # 两个 USB-C 左缘（实测 21.5/35 是最左缘→换算）
+USBC_W = 9.0                       # 实测口长 9
+TF_X0, TF_W = 41.0, 15.0           # 实测最左缘 56、长 15
+LCD_X0, LCD_W = 62.5, 13.5         # 实测最左缘 76、长 13.5（第一版漏开！）
 
-IN_W = BOARD_W + 2 * CLEAR      # 内腔
-IN_L = BOARD_L + 2 * CLEAR
+# 右边（USB-A + K1/K2/K3）：参考 = **PCB 下缘**（底边角点）往上量
+USBA_Y_FROM_BOT = 41.0             # USB-A 中心
+KEY_YS_FROM_BOT = (8.5, 16.0, 23.5)  # K1/K2/K3 中心（K1 离下缘最近）
+USBA_W, USBA_H = 14.0, 6.5         # 单层开口（宽 × 高，默认）
+KEY_D = 3.5                        # 按键过孔（旧 3.2 偏紧）
+
+# 左边（端子组）：用户定"口开大 5mm 就能用" → 两端各放 2.5
+TERM_Y0, TERM_Y1 = 22.8, 58.9      # 端子组沿 PCB 上缘起算的跨度（实测 35 长）
+TERM_MARGIN = 2.5                  # 开口两侧各加宽
+TERM_H = 7.0                       # 端子高出板面（实测）
+
+IN_W = TOTAL_W + 2 * CLEAR      # 内腔（按含凸起总外廓）
+IN_L = TOTAL_L + 2 * CLEAR
 OUT_W = IN_W + 2 * WALL
 OUT_L = IN_L + 2 * WALL
 
@@ -109,34 +121,41 @@ def build_bottom():
     # 底板：4 个铜柱安装孔
     for ix in (0, 1):
         for iy in (0, 1):
-            cx = WALL + CLEAR + STD_X0 + ix * STD_DX
+            cx = WALL + CLEAR + PROT_LEFT + STD_X0 + ix * STD_DX
             cy = WALL + CLEAR + STD_Y0 + iy * STD_DY
             m = m - cyl(cx, cy, -1, FLOOR + 1, STD_HOLE)
 
-    bx = WALL + CLEAR          # 板左缘 X
-    by = WALL + CLEAR          # 板上缘 Y
-    bz = FLOOR + STD_H         # 板背面 Z（板面 = bz + BOARD_T）
+    bx = WALL + CLEAR + PROT_LEFT   # PCB 左缘 X（腔体左内壁基准 + 端子凸起）
+    by = WALL + CLEAR               # PCB 上缘 Y
+    bz = Z_BOARD_BOT                # 板背面 Z（板面 = bz + BOARD_T）
 
-    # 左壁（X=0 侧，背面照片左缘）：端子组开口 + MIC 拾音孔
-    m = m - box(-1, by + TERM_Y0, TERM_Z0 - 0.5, WALL + 1, by + TERM_Y1,
-                TERM_Z0 + TERM_H + 0.5)
-    # 右壁（X=OUT_W 侧）：USB-A 双层开口 + K1/K2/K3 三孔
-    m = m - box(OUT_W - WALL - 1, by + USBA_Y - USBA_W / 2, TERM_Z0 - 0.5,
-                OUT_W + 1, by + USBA_Y + USBA_W / 2, TERM_Z0 + USBA_H)
-    for ky in KEY_YS:
-        m = m - cyl_x(OUT_W - WALL / 2, by + ky, KEY_Z, WALL + 2, KEY_D)
-    # 前壁（Y=OUT_L 侧）：两个 USB-C + TF 卡
-    for cx in USBC_XS:
-        m = m - box(bx + cx - USBC_W / 2, OUT_L - WALL - 1, TERM_Z0 - 0.5,
-                    bx + cx + USBC_W / 2, OUT_L + 1, TERM_Z0 + USBC_H)
-    m = m - box(bx + TF_X - TF_W / 2, OUT_L - WALL - 1, TERM_Z0 - 0.5,
-                bx + TF_X + TF_W / 2, OUT_L + 1, TERM_Z0 + TF_H)
+    # 左壁（X=0 侧，端子侧）：端子组开口（两端各放 TERM_MARGIN）
+    m = m - box(-1, by + TERM_Y0 - TERM_MARGIN, Z_BOARD_TOP - 0.5,
+                WALL + 1, by + TERM_Y1 + TERM_MARGIN, Z_BOARD_TOP + TERM_H + 0.5)
+    # 右壁（X=OUT_W 侧）：USB-A + K1/K2/K3（位置实测"距 PCB 下缘"→ 换算到上缘基准）
+    usba_y = by + PCB_L - USBA_Y_FROM_BOT
+    m = m - box(OUT_W - WALL - 1, usba_y - USBA_W / 2, Z_BOARD_TOP - 0.5,
+                OUT_W + 1, usba_y + USBA_W / 2, Z_BOARD_TOP + USBA_H)
+    for d in KEY_YS_FROM_BOT:
+        ky = by + PCB_L - d
+        m = m - cyl_x(OUT_W - WALL / 2, ky, Z_BOARD_TOP + 1.0, WALL + 2, KEY_D)
+    # 底边（Y=OUT_L 侧）：两个 USB-C + TF + LCD&TP
+    #   X 参考 = 端子插口凸起端（腔体左内壁 + CLEAR），与用户实测基准一致
+    x0 = WALL + CLEAR
+    port_z0, port_z1 = Z_USBC - 2.25, Z_USBC + 2.25   # 口心 ±2.25（含余量）
+    for x_left in (USBC1_X0, USBC2_X0):
+        m = m - box(x0 + x_left, OUT_L - WALL - 1, port_z0,
+                    x0 + x_left + USBC_W, OUT_L + 1, port_z1)
+    m = m - box(x0 + TF_X0, OUT_L - WALL - 1, port_z0,
+                x0 + TF_X0 + TF_W, OUT_L + 1, port_z1)
+    m = m - box(x0 + LCD_X0, OUT_L - WALL - 1, port_z0,
+                x0 + LCD_X0 + LCD_W, OUT_L + 1, port_z1)
     # 后壁（Y=0 侧）：顶部条带完全敞开（排针/按键/喇叭都在板上方露出）
     #   —— 不做开口：条带在内侧，外壳只留口沿，不挡视线。
 
     # 面框固定：两侧各 2 个 M3 自攻孔（孔心 = 口沿下 5mm）
     zs = RIM_Z - 5.0
-    for (yy, xx) in ((by + 8, 0), (by + 8, OUT_W), (by + BOARD_L - 8, 0), (by + BOARD_L - 8, OUT_W)):
+    for (yy, xx) in ((by + 8, 0), (by + 8, OUT_W), (by + PCB_L - 8, 0), (by + PCB_L - 8, OUT_W)):
         if xx == 0:
             m = m - cyl_x(WALL / 2, yy, zs, WALL + 2, 2.5)
         else:
@@ -151,7 +170,7 @@ def build_top():
             box(SKIRT_T, SKIRT_T, RIM_Z - SKIRT_H - 1, OUT_W - SKIRT_T, OUT_L - SKIRT_T, RIM_Z + 1)
     m = plate + skirt
 
-    bx = WALL + CLEAR
+    bx = WALL + CLEAR + PROT_LEFT
     by = WALL + CLEAR
     # ① 顶部条带窗口：X 内腔全宽，Y 板缘到屏幕顶边前（排针/按键/喇叭露出）
     m = m - box(SKIRT_T + 1.5, by + 2.0, RIM_Z - 1, OUT_W - SKIRT_T - 1.5,
@@ -159,10 +178,10 @@ def build_top():
     # ② 屏幕窗口：横跨内腔（屏幕与板同宽），两侧各压 2.5mm、近边压到屏幕顶边、
     #    远边与板边留 2mm 卡边
     m = m - box(bx + 2.5, by + SCR_OFF_Y - 1.5, RIM_Z - 1,
-                bx + BOARD_W - 2.5, by + SCR_OFF_Y + SCR_LEN - 1.0, RIM_Z + TOP_T + 1)
+                bx + PCB_W - 2.5, by + SCR_OFF_Y + SCR_LEN - 1.0, RIM_Z + TOP_T + 1)
     # 面框固定孔（与底壳侧壁对应）
     zs = RIM_Z - 5.0
-    for (yy, xx) in ((by + 8, 0), (by + 8, OUT_W), (by + BOARD_L - 8, 0), (by + BOARD_L - 8, OUT_W)):
+    for (yy, xx) in ((by + 8, 0), (by + 8, OUT_W), (by + PCB_L - 8, 0), (by + PCB_L - 8, OUT_W)):
         cx = SKIRT_T / 2 if xx == 0 else OUT_W - SKIRT_T / 2
         m = m - cyl_x(cx, yy, zs, SKIRT_T + 2, 3.4)
     return m
