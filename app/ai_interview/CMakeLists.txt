@@ -12,6 +12,7 @@ if(CONFIG_APP_AI_INTERVIEW)
     network_client.c
     audio_io.c
     interview_ui.c
+    wifi_connect.c
     DEPENDS
     lvgl
     STACKSIZE

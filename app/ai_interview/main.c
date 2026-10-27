@@ -32,6 +32,7 @@
 #include "audio_io.h"
 #include "app_config.h"
 #include "interview_ui.h"
+#include "wifi_connect.h"
 
 /* ---- 按键 GPIO ---- */
 #define KEY1_GPIO  1   /* K1 开始面试 */
@@ -388,6 +389,14 @@ static void *pipeline_worker(void *arg)
      * （参考 CONFIG_EXAMPLES_HTTP_STACKSIZE 默认 204800），主任务栈
      * 远不够。cloud_init 也放这里，避免主线程先初始化造成竞争。 */
     cloud_init();
+
+    /* 开机自动联网（2026-10-27）：板子断电后不会自动连回热点，这里替用户
+     * 敲那串 wapi 命令。**失败不阻塞**——云端健康检查会给出真实结果，
+     * 没有 Wi-Fi 时面试照常进入"云端不可达"的可读错误路径。 */
+    printf("[Main] 检查 Wi-Fi（自动联网）...\n");
+    if (wifi_connect_boot() != 0) {
+        printf("[Main] 提示: 自动联网未完成，将按当前网络继续\n");
+    }
 
     printf("[Main] 云端健康检查...\n");
     if (cloud_health_check() != CLOUD_OK) {

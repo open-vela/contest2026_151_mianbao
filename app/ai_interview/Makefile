@@ -14,7 +14,7 @@ MODULE    = $(CONFIG_APP_AI_INTERVIEW)
 
 # 源文件列表
 MAINSRC   = main.c
-CSRCS     = state_machine.c network_client.c audio_io.c interview_ui.c
+CSRCS     = state_machine.c network_client.c audio_io.c interview_ui.c wifi_connect.c
 
 # 依赖的头文件路径。
 #

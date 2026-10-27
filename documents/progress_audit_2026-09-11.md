@@ -3527,3 +3527,49 @@ venv 全量 **349 项全过**；内联 JS 过 `node --check`；真机冒烟：`/
      出声；开机自动重连 Wi-Fi（`wapi save_config` 不存在，需自写）。
 * 产品口径：**"断网 = 暂停练习，不丢进度"，不是"离线可用"**。商业计划书
   风险章节按这个写。
+
+---
+
+### 11.66 开机自动联网（固件，2026-10-27，待真机验证）
+
+**起因**：板子断电重上电后不会自动连回热点（§4.5.1 实测），每次演示都要手敲
+`ifup` / `wapi` / `renew` 一串命令。产品化第一步就是把这个动作自动化。
+
+**做法**（`app/ai_interview/wifi_connect.c/.h`，启动时在工作线程里调）：
+
+1. **凭据来源**（优先级从高到低）：
+   - NSH 环境变量 `WIFI_SSID` / `WIFI_PSK`（本次启动有效）；
+   - `/data/ai_interview_wifi`（两行：SSID、密码）。**用环境变量成功启动过一次
+     后自动写回**，下次开机不用再设。
+   - ⚠️ **密码不写进仓库、不进日志**：涉及密码的那条命令只打印固定标签；
+     字符白名单校验（拒绝空格/引号/分号/管道/反引号等），防命令注入。
+2. **命令执行**：`posix_spawn("nsh", "-c", <单条命令>)` + `waitpid` 逐条等退出。
+   为什么不直接调 wapi 库：公开头文件 `apps/include/wireless/wapi.h` **没有
+   PSK 设置函数**（`$ wapi psk` 是 CLI 自己解析的），而下面这串命令用户已在
+   真机验证过：
+   `ifup wlan0` → `wapi mode wlan0 2` → `wapi psk wlan0 <密码> 3` →
+   `wapi essid wlan0 <SSID> 1` → `renew wlan0`，最后加一条
+   `wapi power_save wlan0 off`（README 记过：Realtek 省电模式是随机掉线的
+   头号嫌疑）。
+3. **失败不阻塞**：`ifup`/`power_save` 失败只提示；关键命令（mode/psk/essid/
+   renew）失败返回 -3，调用方照常继续 —— 云端健康检查会给出真实结果。
+
+**两个实现细节**：
+* `posix_spawn` 的 envp 传 **NULL** —— NuttX 自己的 builtin 执行器
+  （`apps/builtin/exec_builtin.c`）也是这么传的；nsh 的 ifup/wapi/renew 都是
+  编译进固件的内置命令，不依赖子进程环境。为此删掉了 `extern char **environ;`
+  （它会触发 `-Wstrict-prototypes` 警告）。
+* 命令串按 `snprintf` 拼、凭据先过白名单校验；**不拼 shell 引号**，因为
+  NuttX nsh 的分词对带空格的 SSID 本就不友好 —— 与其半支持，不如明确拒绝。
+
+**编译验证**：`CC: wifi_connect.c` → `LD: nuttx`，**0 警告 0 错误**；
+新镜像 sha256 `8a788c8f…`，镜像内可搜到 `WIFI_SSID`、
+`/data/ai_interview_wifi`、`检查 Wi-Fi`、`开始连接热点`（判据同 §11.47：
+不看退出码，看产物内容）。
+
+**真机待验证（烧录后）**：
+1. 首次：`nsh> set WIFI_SSID <热点名>` / `set WIFI_PSK <密码>` / `ai_interview`
+   → 日志出现「开始连接热点 …」「凭据已保存到 /data/ai_interview_wifi」；
+2. **断电重上电**后直接 `ai_interview` → 应自动连上（不用再敲 wapi）；
+3. 故意把密码写错 → 日志逐条报失败，云端健康检查报不可达（可读路径）；
+4. 热点名带空格的情况：`set` 会按空白分词，**不支持** —— 用写文件的方式。
