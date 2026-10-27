@@ -153,6 +153,80 @@ static void save_volume_pref(void)
     fclose(fp);
 }
 
+/* ---- 账号 token（2026-10-27）----
+ * 扫码绑定后设备拿到的长期凭据，随每次面试请求发送；存在 /data 的一个小文件里。
+ * token 由云端 /api/bind/start 生成，**同时就是二维码里的绑定码**：
+ * 设备申请到就立刻落盘并用它请求，手机扫码后云端把 token 与账号关联。 */
+#define USER_PREF_PATH "/data/ai_interview_user"
+static char g_user_token[128];
+static char g_bind_url[256];
+static int  g_bind_url_pending;
+
+static void trim_eol(char *s)
+{
+    size_t len = strlen(s);
+    while (len > 0 && (s[len - 1] == '\r' || s[len - 1] == '\n' ||
+                       s[len - 1] == ' ' || s[len - 1] == '\t')) {
+        s[--len] = '\0';
+    }
+}
+
+static void load_user_token(void)
+{
+    FILE *fp = fopen(USER_PREF_PATH, "r");
+
+    g_user_token[0] = '\0';
+    if (fp == NULL) {
+        return;                     /* 还没绑定 */
+    }
+    if (fgets(g_user_token, sizeof(g_user_token), fp) != NULL) {
+        trim_eol(g_user_token);
+        if (g_user_token[0] != '\0') {
+            printf("[Main] 账号 token：已加载（%s）\n", USER_PREF_PATH);
+        }
+    }
+    fclose(fp);
+}
+
+static void save_user_token(const char *token)
+{
+    FILE *fp = fopen(USER_PREF_PATH, "w");
+
+    if (fp == NULL) {
+        printf("[Main] 警告: 账号 token 写不进去（%s）—— 本次有效，重启后需重新绑定\n",
+               USER_PREF_PATH);
+        return;
+    }
+    fprintf(fp, "%s\n", token);
+    fclose(fp);
+    printf("[Main] 账号 token 已保存（%s）\n", USER_PREF_PATH);
+}
+
+/* 工作线程 → 主线程：二维码 URL 通过共享槽传递（LVGL 只归主线程碰）。 */
+static void publish_bind_url(const char *url)
+{
+    pthread_mutex_lock(&g_lock);
+    strncpy(g_bind_url, url, sizeof(g_bind_url) - 1);
+    g_bind_url[sizeof(g_bind_url) - 1] = '\0';
+    g_bind_url_pending = 1;
+    pthread_mutex_unlock(&g_lock);
+}
+
+static int take_bind_url(char *out, size_t cap)
+{
+    int pending;
+
+    pthread_mutex_lock(&g_lock);
+    pending = g_bind_url_pending;
+    if (pending) {
+        strncpy(out, g_bind_url, cap - 1);
+        out[cap - 1] = '\0';
+        g_bind_url_pending = 0;
+    }
+    pthread_mutex_unlock(&g_lock);
+    return pending;
+}
+
 /* 触摸屏音量控件的回调（LVGL 在主线程里调它）：±10% 一档。 */
 static void app_volume_step(int delta)
 {
@@ -417,6 +491,23 @@ static void *pipeline_worker(void *arg)
     printf("[Main] 云端健康检查...\n");
     if (cloud_health_check() != CLOUD_OK) {
         printf("[Main] 警告: 云端不可达，请检查 CLOUD_URL 与网络\n");
+    }
+
+    /* 账号绑定（2026-10-27）：没绑定就申请一个 token，把二维码 URL 交给主线程。
+     * token 同时是设备之后的长期凭据，申请到立刻落盘（重启不再重复申请）。 */
+    if (cloud_user_token()[0] == '\0') {
+        char bind_url[256];
+        char bind_token[128];
+
+        printf("[Main] 未绑定账号，向云端申请绑定二维码...\n");
+        if (cloud_bind_start(bind_url, sizeof(bind_url),
+                             bind_token, sizeof(bind_token)) == CLOUD_OK) {
+            cloud_set_user_token(bind_token);
+            save_user_token(bind_token);
+            publish_bind_url(bind_url);
+        } else {
+            printf("[Main] 申请绑定二维码失败（不影响面试，重启可再试）\n");
+        }
     }
 
     for (;;) {
@@ -745,6 +836,11 @@ int main(int argc, char *argv[])
     printf("[Cloud] 云端地址: %s\n", app_cloud_base_url());
     printf("[Cloud] 来源: %s\n", cloud_url_source());
 
+    /* 账号 token 读盘并交给网络层。cloud_set_user_token 只是字符串拷贝，
+     * 不是网络调用 —— 可以在这里（工作线程启动前）做，避免竞争。 */
+    load_user_token();
+    cloud_set_user_token(g_user_token);
+
     /* 流水线工作线程：栈必须够大，libcurl 要 200KB 量级。
      * 本函数内不得出现任何 curl 调用 —— 主任务栈放不下。 */
     pthread_attr_init(&attr);
@@ -783,6 +879,15 @@ int main(int argc, char *argv[])
             interview_ui_set_session(live);
         }
         interview_ui_pump();
+
+        /* 工作线程申请到绑定 URL 时，在主线程显示二维码（LVGL 只归主线程）。 */
+        {
+            char bind_url[256];
+
+            if (take_bind_url(bind_url, sizeof(bind_url))) {
+                interview_ui_show_bind(bind_url);
+            }
+        }
 
         /* 把工作线程投来的事件交给状态机 —— 只有主线程能碰它 */
         while (app_pop_event(&ev)) {

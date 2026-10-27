@@ -3612,3 +3612,57 @@ venv 全量 **349 项全过**；内联 JS 过 `node --check`；真机冒烟：`/
 3. 故意输错密码 → 串口逐条报失败；点待机页右上角「Wi-Fi」重配；
 4. 点「跳过」→ 进待机页，云端不可达时按既有可读错误路径处理；
 5. 屏上键盘在 800 高/1280 高两种分辨率下都不挡输入框（布局按百分比）。
+
+---
+
+### 11.68 账号与扫码绑定（云端 + 固件，2026-10-27，板端待真机验证）
+
+**起因**：产品化 P2 —— 公共设备上"这场是谁的"一直靠"首句回答认人"（权宜之计）。
+改成**手机扫码绑定账号**：练习记录跟着人走，换设备/换场地都不丢。
+
+**设计（刻意最小）**
+* **token 即身份，没有密码**：练习场景不需要找回/重置；扫码 → 填昵称 → 绑定。
+* **绑定 token 同时是设备的长期凭据**：设备申请到就落盘（`/data/ai_interview_user`）
+  并随每次面试请求发送，**不需要轮询"绑定完成没有"**。代价是"谁先扫到谁就是
+  账号主人"，演示场景可接受。
+* 账号数据只存 `cloud/data/users/users.json`（.gitignore），昵称/手机号不对外展示。
+* **未登录仍可浏览全部记录**（评委/只读展示）；登录只影响"我的记录"与成长曲线。
+
+**云端**
+* `cloud/user_store.py`：token 申请/绑定（幂等）/token→用户/id→用户；原子写、坏文件不炸。
+* `app.py`：
+  - `/api/bind/start`（设备发码，返回 `bind_url`，Host 取自请求——板子用局域网
+    IP 请求，手机同一网络可打开）、`/api/bind`（手机绑定并种 `uid` cookie，30 天）、
+    `/api/me`、`/api/logout`；
+  - 页面：`/bind`（手机绑定页）、`/account`（账号页 + 生成绑定链接，**没有板子也能
+    用手机试**）；主页顶栏加「账号」入口；
+  - 会话归属：`InterviewSession.user_id` 建会话时钉住；`/api/history`、
+    `/api/sessions`、`/api/growth` 在登录后按账号过滤；
+  - 设备请求体新增 `user_token`；文字演练也接受它（或走网页 cookie）。
+* 测试：`test_user_store.py` 7 项 + 路由 5 项（发码/绑定/cookie/归属/换账号看不到/
+  旧场次仍公开），venv 全量 **365 项全过**；真实冒烟（bind→cookie→/api/me→历史过滤）通过。
+
+**固件**
+* `network_client.c/.h`：`cloud_set_user_token` / `cloud_user_token` /
+  `cloud_bind_start()`（POST /api/bind/start，cJSON 解析 `bind_url`+`token`）；
+  面试请求体加 `user_token`。
+* `main.c`：启动读 `/data/ai_interview_user`；未绑定则工作线程申请 token →
+  落盘 → 通过共享槽（g_lock 保护）把 `bind_url` 交给主线程；主循环每拍取出并
+  调 `interview_ui_show_bind()`。
+* `interview_ui.c/.h`：新增绑定页（`lv_qrcode` 现画二维码 + 跳过按钮）；
+  开始面试时自动收起；二维码内容 = `bind_url`。
+* 编译：`CC: network_client.c / interview_ui.c / main.c` → `LD: nuttx`，
+  **0 警告 0 错误**；镜像 sha256 `d4a627e3…`（40.10MB），可搜到「绑定账号」
+  「用手机扫码」「/api/bind/start」「/data/ai_interview_user」。
+
+**手机试（没有板子也能做）**
+1. 手机与电脑连同一 Wi-Fi/热点；电脑上 `http://<电脑局域网IP>:5000/account`；
+2. 点「生成绑定链接」→ 手机打开该链接 → 填昵称 → 绑定成功；
+3. 手机打开 `/history` → 只显示自己的记录；`/account` 显示已登录昵称。
+   打不开先查 Windows 防火墙 5000 入站规则。
+
+**已知限制**
+* 微信小程序版需要企业资质 + HTTPS 备案域名，比赛现场不引入；H5 与未来小程序
+  共用同一套后端接口（小程序只需加 `wx.login → openid` 映射）。
+* 设备一旦绑定就不会再弹二维码；要换账号需删 `/data/ai_interview_user` 后重启
+  （后续可加"切换账号"命令）。

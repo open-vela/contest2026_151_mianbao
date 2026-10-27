@@ -57,6 +57,23 @@ void cloud_init(void);
 int cloud_health_check(void);
 
 /*
+ * 账号绑定（2026-10-27）：
+ *   cloud_bind_start() 向云端申请绑定 token，并把二维码要用的 URL 和 token
+ *   带回来。token 同时是设备之后的长期凭据 —— 设备把它存到
+ *   /data/ai_interview_user，之后每次面试请求都带上（cloud_set_user_token）。
+ *
+ * 只能在工作线程调用（libcurl，同本文件其它网络函数）。
+ */
+int cloud_bind_start(char *url_out, size_t url_cap,
+                     char *token_out, size_t token_cap);
+
+/* 设置随面试请求发送的账号 token；空串表示未绑定（云端按未归属处理）。 */
+void cloud_set_user_token(const char *token);
+
+/* 当前 token（未绑定为空串）。 */
+const char *cloud_user_token(void);
+
+/*
  * 文字转语音（2026-10-19，开场白用）：POST /api/test/tts {"text": ...}。
  * 成功时 *wav 指向 malloc 出来的 WAV（含 44 字节头），调用方负责 free。
  * 失败只返回负值 —— 开场白合成不出来不该拦住面试（调用方跳过即可）。

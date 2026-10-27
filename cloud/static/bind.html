@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>绑定账号 · 预面 Preview</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --line:#e3e8f0; --ink:#1c2333;
+          --dim:#6b7688; --brand:#2f6df6; --brand-dim:#eaf0ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { width:100%; max-width:420px; background:var(--card); border:1px solid var(--line);
+          border-radius:16px; padding:26px 22px; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:18px; }
+  .hint { background:var(--brand-dim); color:#274b9f; border-radius:10px;
+          padding:10px 12px; font-size:12.5px; margin-bottom:18px; }
+  label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
+  input { width:100%; font:inherit; padding:11px 12px; border:1px solid var(--line);
+          border-radius:10px; background:#fff; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--brand);
+                box-shadow:0 0 0 3px var(--brand-dim); }
+  button { width:100%; margin-top:20px; font:inherit; font-weight:600; color:#fff;
+           background:var(--brand); border:none; border-radius:10px; padding:12px;
+           cursor:pointer; }
+  button:disabled { opacity:.6; }
+  .msg { margin-top:14px; font-size:13.5px; }
+  .ok { color:#15803d; }
+  .err { color:#b91c1c; }
+  .links { margin-top:18px; font-size:13.5px; }
+  .links a { color:var(--brand); text-decoration:none; margin-right:16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>绑定预面账号</h1>
+  <div class="sub">扫码来源：练习机。填写昵称后，这场及以后的练习记录都会归入你的账号。</div>
+  <div class="hint" id="hint">正在读取二维码…</div>
+  <form id="form">
+    <label for="nickname">昵称（必填，1~24 字）</label>
+    <input id="nickname" maxlength="24" required placeholder="例如：小明">
+    <label for="phone">手机号（可选，仅保存在本机云端）</label>
+    <input id="phone" inputmode="tel" maxlength="20" placeholder="用于以后找回账号">
+    <button id="submit" type="submit">绑定并登录</button>
+  </form>
+  <div class="msg" id="msg"></div>
+  <div class="links"><a href="/">首页</a><a href="/history">历史</a><a href="/account">账号</a></div>
+</div>
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get("token") || "";
+  var hint = document.getElementById("hint");
+  var msg = document.getElementById("msg");
+  var form = document.getElementById("form");
+  var btn = document.getElementById("submit");
+
+  if (!token) {
+    hint.textContent = "二维码里没有绑定信息 —— 请重新扫设备上的二维码。";
+    btn.disabled = true;
+    return;
+  }
+  hint.textContent = "二维码有效。填写昵称即可绑定（同一二维码重复提交不会建两个账号）。";
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var nickname = document.getElementById("nickname").value.trim();
+    var phone = document.getElementById("phone").value.trim();
+    if (!nickname) { return; }
+    btn.disabled = true;
+    msg.className = "msg";
+    msg.textContent = "绑定中…";
+    fetch("/api/bind", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token, nickname: nickname, phone: phone })
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    }).then(function (res) {
+      if (!res.ok || !res.d.user) {
+        throw new Error(res.d.error || "绑定失败");
+      }
+      msg.className = "msg ok";
+      msg.textContent = "绑定成功！欢迎，" + res.d.user.nickname +
+        "。本场记录已归入你的账号。";
+      form.style.display = "none";
+      hint.style.display = "none";
+    }).catch(function (error) {
+      msg.className = "msg err";
+      msg.textContent = error.message;
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

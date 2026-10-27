@@ -19,6 +19,7 @@ from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
 import report_export
 import session_store
+import user_store
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -38,6 +39,25 @@ def _snapshot(session_id=None):
     if snap is not None:
         return snap
     return session_store.load(session_id) if session_id else session_store.load_latest()
+
+
+def _current_user():
+    """网页当前用户：来自 `uid` cookie；没有就返回 None（公共浏览模式）。
+
+    刻意**不做强制登录**：演示时评委用电脑直接打开 `/` 和 `/history` 仍能看
+    （这是只读展示页）；登录只影响"我的记录"过滤。
+    """
+    uid = request.cookies.get("uid", "")
+    return user_store.user_for_id(uid) if uid else None
+
+
+def _user_from_request(data=None):
+    """接口调用者：优先请求体 `user_token`（设备），其次网页 cookie。"""
+    token = ""
+    if isinstance(data, dict):
+        token = (data.get("user_token") or "").strip()
+    user = user_store.user_for_token(token) if token else None
+    return user or _current_user()
 
 
 def _start_scoring(session_id):
@@ -200,6 +220,10 @@ def handle_interview():
         # 获取或创建会话（压力档位同 role：建会话时钉住）
         is_new = session_manager.get_session(session_id) is None
         session = session_manager.get_or_create_session(session_id, role, pressure)
+        # 账号归属：只在新会话上写一次（中途换账号不改已有场次）。
+        if is_new:
+            user = _user_from_request(data)
+            session.user_id = user.get("id", "") if user else ""
 
         # 只在"开新会话"这一条路径上清理过期会话：正在进行的会话绝不会被扫到
         # —— 走这条路径时它根本不在内存里。清理是为了让长期挂着的进程内存不
@@ -358,7 +382,11 @@ def handle_interview_text():
 
     acquired = False
     try:
+        is_new = session_manager.get_session(session_id) is None
         session = session_manager.get_or_create_session(session_id, role, pressure)
+        if is_new:
+            user = _user_from_request(data)
+            session.user_id = user.get("id", "") if user else ""
         # 已存在的会话**以它自己的岗位与压力档位为准**：刷新页面之后客户端可能忘了
         # 当初选的是哪个，而面试官人设、题库检索、追问强度都跟着它们走 ——
         # 不能让客户端的一次疏忽把整场带偏。
@@ -460,6 +488,10 @@ def history():
     snap = _snapshot(request.args.get('session_id'))
     if snap is None:
         return jsonify({"waiting": True, "session_id": "", "messages": []})
+    # 登录用户只能看自己的场次；没绑定过的旧场次仍然公开（演示页只读）。
+    user = _current_user()
+    if user and snap.get("user_id") and snap.get("user_id") != user["id"]:
+        return jsonify({"error": "这场面试属于其他账号"}), 404
     return jsonify(snap)
 
 
@@ -499,6 +531,11 @@ def growth():
 
     role = (request.args.get('role') or '').strip()
     snapshots = session_store.recent_snapshots(limit)
+    # 登录后成长曲线也只算自己的场次。
+    user = _current_user()
+    if user:
+        snapshots = [s for s in snapshots
+                     if (s.get("user_id") or "") == user["id"]]
     if role:
         snapshots = [s for s in snapshots if s.get('role') == role]
     return jsonify(build_growth(snapshots, limit=limit))
@@ -518,7 +555,79 @@ def sessions():
     except (TypeError, ValueError):
         limit = 20
     limit = max(1, min(limit, 100))
-    return jsonify({"sessions": session_store.list_summaries(limit), "limit": limit})
+    summaries = session_store.list_summaries(limit)
+    # 登录后只列自己的场次；未登录（评委/演示）照旧看全部。
+    user = _current_user()
+    if user:
+        summaries = [s for s in summaries
+                     if (s.get("user_id") or "") == user["id"]]
+    return jsonify({"sessions": summaries, "limit": limit})
+
+
+# ============================================================
+# 账号与扫码绑定（2026-10-27）
+#
+# 流程：设备 POST /api/bind/start 拿 token → 把 bind_url 显示成二维码 →
+# 手机扫码打开 /bind?token=… → 填昵称 → POST /api/bind 建立账号并种下 uid
+# cookie → 设备把 token 存到 /data/ai_interview_user，之后每次请求带上，
+# 会话就归到这个账号名下。
+# ============================================================
+
+@app.route('/api/bind/start', methods=['POST'])
+def bind_start():
+    """设备申请绑定 token。
+
+    `bind_url` 用的是**请求里的 Host**：板子用 `CLOUD_URL`（局域网 IP）请求，
+    手机在同一热点下就能打开；用 127.0.0.1 请求时得到的链接手机打不开 ——
+    `account.html` 会就此给出提示。
+    """
+    token = user_store.create_token()
+    base = request.host_url.rstrip('/')
+    return jsonify({"token": token,
+                    "bind_url": f"{base}/bind?token={token}",
+                    "expires_in": 86400})
+
+
+@app.route('/api/bind', methods=['POST'])
+def bind_account():
+    data = request.get_json() or {}
+    user = user_store.bind(data.get('token', ''), data.get('nickname', ''),
+                           data.get('phone', ''))
+    if user is None:
+        return jsonify({"error": "绑定失败：二维码无效，或昵称不合法（1~24 字）"}), 400
+    response = jsonify({"user": {"id": user["id"],
+                                 "nickname": user["nickname"]}})
+    # 30 天免登录：同一部手机下次打开 /history 直接是自己的记录。
+    response.set_cookie("uid", user["id"], max_age=30 * 24 * 3600,
+                        samesite="Lax")
+    logger.info(f"[账号] 手机绑定成功 user={user['id'][:8]}…")
+    return response
+
+
+@app.route('/api/me', methods=['GET'])
+def current_account():
+    user = _current_user()
+    return jsonify({"user": ({"id": user["id"], "nickname": user["nickname"]}
+                             if user else None)})
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    response = jsonify({"ok": True})
+    response.delete_cookie("uid")
+    return response
+
+
+@app.route('/bind', methods=['GET'])
+def bind_page():
+    """手机扫码落点：填昵称 → 绑定账号。"""
+    return app.send_static_file('bind.html')
+
+
+@app.route('/account', methods=['GET'])
+def account_page():
+    """账号页：显示当前账号 + 生成绑定链接（没有板子也能用手机试）。"""
+    return app.send_static_file('account.html')
 
 
 @app.route('/history', methods=['GET'])

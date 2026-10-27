@@ -111,6 +111,102 @@ void cloud_init(void)
     g_initialized = 1;
 }
 
+/* ---------- 账号 token（2026-10-27） ---------- */
+
+static char g_user_token[128];
+
+void cloud_set_user_token(const char *token)
+{
+    strncpy(g_user_token, (token != NULL) ? token : "",
+            sizeof(g_user_token) - 1);
+    g_user_token[sizeof(g_user_token) - 1] = '\0';
+}
+
+const char *cloud_user_token(void)
+{
+    return g_user_token;
+}
+
+/* ---------- 申请绑定 token ---------- */
+
+int cloud_bind_start(char *url_out, size_t url_cap,
+                     char *token_out, size_t token_cap)
+{
+    CURL *curl;
+    CURLcode rc;
+    struct mem_chunk chunk = { NULL, 0 };
+    struct curl_slist *headers = NULL;
+    cJSON *root = NULL;
+    cJSON *item;
+    char url[256];
+    long status = 0;
+    int ret = CLOUD_ERR_JSON;
+
+    if (url_out == NULL || token_out == NULL || url_cap == 0 || token_cap == 0) {
+        return CLOUD_ERR_NOMEM;
+    }
+    url_out[0] = '\0';
+    token_out[0] = '\0';
+
+    cloud_init();
+    snprintf(url, sizeof(url), "%s/api/bind/start", app_cloud_base_url());
+
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        return CLOUD_ERR_HTTP;
+    }
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Expect:");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{}");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 2L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+    rc = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+
+    if (rc != CURLE_OK || status < 200 || status >= 300) {
+        printf("[Cloud] 申请绑定 token 失败（HTTP %ld）\n", status);
+        free(chunk.memory);
+        return CLOUD_ERR_HTTP;
+    }
+
+    root = cJSON_Parse(chunk.memory != NULL ? chunk.memory : "");
+    free(chunk.memory);
+    if (root == NULL) {
+        return CLOUD_ERR_JSON;
+    }
+
+    item = cJSON_GetObjectItem(root, "bind_url");
+    if (!cJSON_IsString(item) || item->valuestring == NULL) {
+        cJSON_Delete(root);
+        return CLOUD_ERR_JSON;
+    }
+    strncpy(url_out, item->valuestring, url_cap - 1);
+    url_out[url_cap - 1] = '\0';
+
+    item = cJSON_GetObjectItem(root, "token");
+    if (!cJSON_IsString(item) || item->valuestring == NULL) {
+        cJSON_Delete(root);
+        return CLOUD_ERR_JSON;
+    }
+    strncpy(token_out, item->valuestring, token_cap - 1);
+    token_out[token_cap - 1] = '\0';
+
+    cJSON_Delete(root);
+    ret = CLOUD_OK;
+    return ret;
+}
+
 /* ---------- 文字转语音（开场白） ---------- */
 
 int cloud_tts_text(const char *text, uint8_t **wav, size_t *wav_len)
@@ -530,7 +626,8 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
      */
     sid = (req->session_id != NULL) ? req->session_id : "";
     body_cap = b64_len + strlen(sid) + strlen(req->role) +
-               strlen(req->pressure) + strlen(req->state) + 256;
+               strlen(req->pressure) + strlen(req->state) +
+               strlen(g_user_token) + 256;
     body = malloc(body_cap);
     if (body == NULL) {
         ret = CLOUD_ERR_NOMEM;
@@ -539,8 +636,9 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
 
     snprintf(body, body_cap,
              "{\"session_id\":\"%s\",\"audio\":\"%s\",\"audio_format\":\"wav\","
-             "\"role\":\"%s\",\"pressure\":\"%s\",\"state\":\"%s\",\"history\":[]}",
-             sid, b64, req->role, req->pressure, req->state);
+             "\"role\":\"%s\",\"pressure\":\"%s\",\"state\":\"%s\","
+             "\"user_token\":\"%s\",\"history\":[]}",
+             sid, b64, req->role, req->pressure, req->state, g_user_token);
 
     /* body 已拼好，立刻释放 base64 缓冲，降低峰值内存 */
     free(b64);

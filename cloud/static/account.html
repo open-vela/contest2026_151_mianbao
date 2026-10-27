@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>账号 · 预面 Preview</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --line:#e3e8f0; --ink:#1c2333;
+          --dim:#6b7688; --brand:#2f6df6; --brand-dim:#eaf0ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { width:100%; max-width:460px; background:var(--card); border:1px solid var(--line);
+          border-radius:16px; padding:26px 22px; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:18px; }
+  .state { background:var(--brand-dim); border-radius:10px; padding:12px 14px;
+           font-size:14px; color:#274b9f; }
+  .state b { color:#1c2333; }
+  .hint { background:#fff7e6; color:#92400e; border-radius:10px; padding:10px 12px;
+          font-size:12.5px; margin-top:12px; line-height:1.7; }
+  .hint code { background:#fff; border-radius:5px; padding:1px 5px; }
+  button { width:100%; margin-top:14px; font:inherit; font-weight:600; color:#fff;
+           background:var(--brand); border:none; border-radius:10px; padding:12px;
+           cursor:pointer; }
+  button.ghost { background:#6b7688; }
+  .url { margin-top:8px; background:var(--bg); border:1px dashed var(--line);
+         border-radius:10px; padding:10px 12px; font-size:12.5px;
+         word-break:break-all; color:#274b9f; }
+  label { display:block; font-size:13px; color:var(--dim); margin-top:14px; }
+  .links { margin-top:18px; font-size:13.5px; }
+  .links a { color:var(--brand); text-decoration:none; margin-right:16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>账号</h1>
+  <div class="sub">预面 Preview · 练习记录跟着账号走</div>
+  <div class="state" id="state">正在读取…</div>
+  <div class="hint" id="lanHint" style="display:none">
+    当前地址是 <code>127.0.0.1</code>，手机打不开这个链接。请改用电脑的局域网 IP
+    打开本页（例如 <code>http://172.20.10.2:5000/account</code>，以 <code>ipconfig</code>
+    为准），再生成链接。
+  </div>
+  <button id="gen">生成绑定链接（用手机打开或扫）</button>
+  <div id="linkBox" style="display:none">
+    <label>手机打开这个链接：</label>
+    <div class="url" id="url"></div>
+    <button id="copy" class="ghost">复制链接</button>
+  </div>
+  <button id="logout" class="ghost" style="display:none">退出登录</button>
+  <div class="links"><a href="/">首页</a><a href="/history">历史</a></div>
+</div>
+<script>
+(function () {
+  var state = document.getElementById("state");
+  var gen = document.getElementById("gen");
+  var linkBox = document.getElementById("linkBox");
+  var urlEl = document.getElementById("url");
+  var copyBtn = document.getElementById("copy");
+  var logoutBtn = document.getElementById("logout");
+  var lanHint = document.getElementById("lanHint");
+
+  if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+    lanHint.style.display = "block";
+  }
+
+  function renderUser(user) {
+    if (user) {
+      state.innerHTML = "已登录：<b>" + escapeHtml(user.nickname) + "</b>";
+      logoutBtn.style.display = "block";
+    } else {
+      state.textContent = "未登录 —— 生成绑定链接，用手机打开即可创建账号。";
+      logoutBtn.style.display = "none";
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  fetch("/api/me", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { renderUser(d.user); })
+    .catch(function () { state.textContent = "读取账号失败（云端未启动？）"; });
+
+  gen.addEventListener("click", function () {
+    gen.disabled = true;
+    fetch("/api/bind/start", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        urlEl.textContent = d.bind_url;
+        linkBox.style.display = "block";
+        var u = new URL(d.bind_url);
+        if (u.hostname === "127.0.0.1" || u.hostname === "localhost") {
+          urlEl.textContent = d.bind_url +
+            "\n\n⚠️ 请把 127.0.0.1 换成电脑的局域网 IP：" +
+            location.hostname + "（手机与电脑需在同一 Wi-Fi/热点）";
+        }
+      })
+      .catch(function () { urlEl.textContent = "生成失败，请确认云端在运行"; })
+      .then(function () { gen.disabled = false; });
+  });
+
+  copyBtn.addEventListener("click", function () {
+    var text = urlEl.textContent.split("\n")[0];
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () {
+        copyBtn.textContent = "已复制";
+      });
+    }
+  });
+
+  logoutBtn.addEventListener("click", function () {
+    fetch("/api/logout", { method: "POST" }).then(function () { location.reload(); });
+  });
+})();
+</script>
+</body>
+</html>

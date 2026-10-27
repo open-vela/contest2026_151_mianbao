@@ -38,7 +38,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import app as cloud_app          # noqa: E402
 import llm_service               # noqa: E402
-import session_store             # noqa: E402
+import session_store
+import user_store             # noqa: E402
 
 # 合法的会话 id（形状同 uuid4；会话白名单要求 1~64 位 [A-Za-z0-9_-]）
 SID = "0f8fad5b-d9cb-469f-a165-70867728950e"
@@ -72,8 +73,12 @@ class RouteTestCase(unittest.TestCase):
 
         # 磁盘隔离：指到临时目录，绝不碰仓库里的 cloud/data/
         self._orig_dir = session_store.DATA_DIR
+        self._orig_user_dir = user_store.DATA_DIR
+        self._orig_user_path = user_store.STORE_PATH
         self.tmp = tempfile.mkdtemp(prefix="routes_test_")
         session_store.DATA_DIR = os.path.join(self.tmp, "sessions")
+        user_store.DATA_DIR = os.path.join(self.tmp, "users")
+        user_store.STORE_PATH = os.path.join(user_store.DATA_DIR, "users.json")
 
         # 内存隔离：不带上一个用例留下的会话
         cloud_app.session_manager.sessions.clear()
@@ -81,6 +86,8 @@ class RouteTestCase(unittest.TestCase):
     def tearDown(self):
         cloud_app.session_manager.sessions.clear()
         session_store.DATA_DIR = self._orig_dir
+        user_store.DATA_DIR = self._orig_user_dir
+        user_store.STORE_PATH = self._orig_user_path
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def disk_files(self):
@@ -645,6 +652,61 @@ class TestPdfExport(RouteTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "application/pdf")
         self.assertTrue(response.data.startswith(b"%PDF"))
+
+
+class TestAccountBind(RouteTestCase):
+    """扫码绑定接线（2026-10-27）：token → 用户 → 会话归属 → 历史过滤。"""
+
+    def _bind(self, nickname):
+        token = self.client.post("/api/bind/start").get_json()["token"]
+        response = self.client.post("/api/bind",
+                                    json={"token": token, "nickname": nickname})
+        self.assertEqual(response.status_code, 200)
+        return token, response.get_json()["user"]
+
+    def test_bind_start_returns_url(self):
+        body = self.client.post("/api/bind/start").get_json()
+        self.assertTrue(body["token"])
+        self.assertIn("/bind?token=" + body["token"], body["bind_url"])
+
+    def test_bind_sets_cookie_and_me_reads_it(self):
+        _, user = self._bind("小明")
+        me = self.client.get("/api/me").get_json()
+        self.assertEqual(me["user"]["id"], user["id"])
+        self.assertEqual(me["user"]["nickname"], "小明")
+
+    def test_bad_token_rejected(self):
+        response = self.client.post("/api/bind",
+                                    json={"token": "nope", "nickname": "小明"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_device_token_ownership_and_history_filter(self):
+        token, user = self._bind("小明")
+
+        # 设备带 user_token 发起一场文字演练
+        with mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "下一个问题？",
+                                             "next_action": "continue"}):
+            response = self.client.post("/api/interview/text", json={
+                "session_id": SID, "role": "AI 应用开发",
+                "text": "我负责检索链路。", "user_token": token})
+        self.assertEqual(response.status_code, 200)
+
+        snapshot = self.client.get(f"/api/history?session_id={SID}").get_json()
+        self.assertEqual(snapshot["user_id"], user["id"])
+
+        sessions = self.client.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual([s["session_id"] for s in sessions], [SID])
+
+        # 换一个账号：看不到小明的场次
+        self._bind("小红")
+        sessions = self.client.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(sessions, [])
+
+    def test_unowned_sessions_stay_public(self):
+        session_store.save(snapshot(SID))       # 没有 user_id 的旧场次
+        sessions = self.client.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual([s["session_id"] for s in sessions], [SID])
 
 
 if __name__ == "__main__":

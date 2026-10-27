@@ -196,6 +196,8 @@ def summary_of(snapshot, mtime=None) -> dict:
                       if isinstance(m, dict) and m.get("role") == "user"),
         "is_finished": bool(snapshot.get("is_finished")),
         "score_total": score.get("total") if isinstance(score, dict) else None,
+        # 账号归属（2026-10-27）：没绑定就是空串 —— 列表页按它过滤"我的记录"。
+        "user_id": snapshot.get("user_id") or "",
         "first_answer": (first[:40] + "…") if len(first) > 40 else first,
     }
 

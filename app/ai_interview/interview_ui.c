@@ -36,6 +36,9 @@
 static lv_obj_t *g_page_idle;
 static lv_obj_t *g_page_live;
 static lv_obj_t *g_page_wifi;
+static lv_obj_t *g_page_bind;
+static lv_obj_t *g_bind_qr;
+static int g_bind_page_visible;
 static lv_obj_t *g_wifi_ssid_ta;
 static lv_obj_t *g_wifi_psk_ta;
 static lv_obj_t *g_wifi_kb;
@@ -395,6 +398,91 @@ static void build_wifi_page(void)
     lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);   /* 默认不显示 */
 }
 
+/* ---------- 账号绑定页（2026-10-27）---------- */
+/*
+ * 二维码内容 = 云端 /api/bind/start 返回的 bind_url（手机在同一网络下可打开）。
+ * 用 LVGL 自带的 lv_qrcode 现画，不依赖 /data/res 里的图片素材。
+ */
+
+static void bind_skip_event(lv_event_t *e)
+{
+    (void)e;
+    interview_ui_show_bind(NULL);
+}
+
+static void build_bind_page(void)
+{
+    int32_t h = ui_height();
+    int compact;
+    int qr;
+
+    if (h <= 0) {
+        h = 800;
+    }
+    compact = h < 480;
+    qr = (int)(h * (compact ? 40 : 42) / 100);
+    if (qr > 320) {
+        qr = 320;
+    }
+
+    g_page_bind = make_page();
+
+    make_label(g_page_bind, "绑定账号", g_font_title, UI_TEXT_COLOR,
+               LV_ALIGN_TOP_MID, 0, compact ? 8 : (int)(h * 0.04));
+    make_label(g_page_bind, "用手机扫码，填写昵称完成绑定", g_font_hint,
+               UI_HINT_COLOR, LV_ALIGN_TOP_MID, 0,
+               compact ? 40 : (int)(h * 0.12));
+
+    g_bind_qr = lv_qrcode_create(g_page_bind);
+    lv_qrcode_set_size(g_bind_qr, qr);
+    lv_qrcode_set_dark_color(g_bind_qr, lv_color_hex(0x000000));
+    lv_qrcode_set_light_color(g_bind_qr, lv_color_hex(0xFFFFFF));
+    lv_obj_align(g_bind_qr, LV_ALIGN_TOP_MID, 0,
+                 compact ? 70 : (int)(h * 0.18));
+
+    {
+        lv_obj_t *btn = make_text_button(g_page_bind, "跳过", bind_skip_event,
+                                         compact ? 100 : 140,
+                                         compact ? 40 : 52, g_font_body);
+        lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, compact ? -8 : -24);
+    }
+
+    lv_obj_add_flag(g_page_bind, LV_OBJ_FLAG_HIDDEN);
+}
+
+void interview_ui_show_bind(const char *url)
+{
+    if (!g_ready || g_page_bind == NULL) {
+        return;
+    }
+
+    if (url != NULL && url[0] != '\0') {
+        if (g_bind_qr != NULL) {
+            lv_qrcode_update(g_bind_qr, url, strlen(url));
+        }
+        lv_obj_add_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
+        if (g_page_wifi != NULL) {
+            lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);
+            g_wifi_page_visible = 0;
+        }
+        lv_obj_remove_flag(g_page_bind, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_page_bind);
+        g_bind_page_visible = 1;
+        printf("[UI] 显示绑定二维码\n");
+    } else {
+        lv_obj_add_flag(g_page_bind, LV_OBJ_FLAG_HIDDEN);
+        g_bind_page_visible = 0;
+        if (g_in_session) {
+            lv_obj_remove_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_page_live);
+        } else {
+            lv_obj_remove_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_page_idle);
+        }
+    }
+}
+
 /* ---------- 对外接口 ---------- */
 
 int interview_ui_init(void)
@@ -450,6 +538,7 @@ int interview_ui_init(void)
     build_idle_page();
     build_live_page();
     build_wifi_page();
+    build_bind_page();
 
     g_ready = 1;
     g_in_session = 0;
@@ -561,6 +650,10 @@ void interview_ui_set_session(int in_session)
         if (g_page_wifi != NULL && g_wifi_page_visible) {
             lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);
             g_wifi_page_visible = 0;
+        }
+        if (g_page_bind != NULL && g_bind_page_visible) {
+            lv_obj_add_flag(g_page_bind, LV_OBJ_FLAG_HIDDEN);
+            g_bind_page_visible = 0;
         }
         lv_obj_add_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);

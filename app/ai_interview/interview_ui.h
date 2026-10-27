@@ -58,4 +58,11 @@ void interview_ui_set_wifi_cb(ui_wifi_cb_t cb);
 /* 1 = 显示配网页（隐藏其它页）；0 = 收起配网页，回到待机/面试页。 */
 void interview_ui_show_wifi(int show);
 
+/*
+ * 账号绑定页（2026-10-27）：显示二维码（内容 = 云端给的 bind_url）。
+ * url 非空 → 更新二维码并显示；url 为空 → 收起绑定页回到待机页。
+ * 二维码由 LVGL 的 lv_qrcode 画，不依赖图片素材。
+ */
+void interview_ui_show_bind(const char *url);
+
 #endif /* __INTERVIEW_UI_H__ */

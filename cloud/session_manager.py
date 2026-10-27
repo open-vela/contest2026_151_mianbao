@@ -23,6 +23,9 @@ class InterviewSession:
         # 副语言指标（2026-10-27）：每轮回答一条，见 speech_metrics.py。
         # 只给展示/导出用，**绝不进 LLM 的 messages**（同 score 的纪律）。
         self.expression = []
+        # 账号归属（2026-10-27）：扫码绑定的用户 id；未绑定为空串。
+        # 建会话时钉住 —— 一场面试中途换账号不会把记录劈成两半。
+        self.user_id = ""
     def add_user_message(self, text: str):
         self.history.append({"role": "user", "content": text})
         self.updated_at = time.time()
@@ -115,6 +118,7 @@ class SessionManager:
             "score": session.score,
             # 副语言指标：老会话/落盘老数据没有这个字段 → 消费方按空列表处理。
             "expression": list(session.expression),
+            "user_id": session.user_id,
             "created_at": session.created_at,
             "updated_at": session.updated_at,
             "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
