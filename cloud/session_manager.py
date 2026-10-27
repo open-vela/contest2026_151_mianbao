@@ -20,12 +20,23 @@ class InterviewSession:
         # P2 的结构化评分。**默认 None**（未评分 / 评分失败 / 老数据）——
         # 消费方（网页、导出）都必须能接受它不存在，见 snapshot() 的注释。
         self.score = None
+        # 副语言指标（2026-10-27）：每轮回答一条，见 speech_metrics.py。
+        # 只给展示/导出用，**绝不进 LLM 的 messages**（同 score 的纪律）。
+        self.expression = []
     def add_user_message(self, text: str):
         self.history.append({"role": "user", "content": text})
         self.updated_at = time.time()
     def add_ai_message(self, text: str):
         self.history.append({"role": "assistant", "content": text})
         self.question_count += 1
+        self.updated_at = time.time()
+    def add_expression(self, metrics: dict):
+        """记一轮表达指标（speech_metrics.speech_metrics 的返回值 + 轮次号）。"""
+        if not metrics:
+            return
+        entry = {"round": len(self.expression) + 1}
+        entry.update(metrics)
+        self.expression.append(entry)
         self.updated_at = time.time()
     def get_history(self):
         return self.history
@@ -102,6 +113,8 @@ class SessionManager:
             # 读到的可能是旧值 —— 评分的消费者只有网页和导出，晚一拍无妨；
             # 而它**绝不进端侧那条响应**（那边是 app.py 里单独 jsonify 的固定字段）。
             "score": session.score,
+            # 副语言指标：老会话/落盘老数据没有这个字段 → 消费方按空列表处理。
+            "expression": list(session.expression),
             "created_at": session.created_at,
             "updated_at": session.updated_at,
             "messages": [{"role": m["role"], "content": m["content"]} for m in messages],

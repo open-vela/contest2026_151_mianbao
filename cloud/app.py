@@ -2,6 +2,7 @@
 AI模拟面试官 — 云端 Flask 服务
 """
 from flask import Flask, request, jsonify, send_file
+import base64
 import io
 import os
 import threading
@@ -12,6 +13,7 @@ from llm_service import (DEFAULT_PRESSURE, PRESSURE_LEVELS, llm_interview,
 from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from reply_guard import flatten_for_tts
+from speech_metrics import speech_metrics
 from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
 import report_export
@@ -225,6 +227,13 @@ def handle_interview():
             if user_text:
                 logger.info(f"[session={session_id}] ASR 识别结果: {user_text[:100]}...")
                 session.add_user_message(user_text)
+                # 副语言指标（语速/口头语/停顿）。纯统计、无额外 API 调用；
+                # 失败只记日志 —— 它只影响报告里的一栏，绝不能拖垮这一轮面试。
+                try:
+                    session.add_expression(speech_metrics(
+                        user_text, base64.b64decode(audio_base64)))
+                except Exception as metrics_error:   # noqa: BLE001
+                    logger.warning(f"[表达] 指标计算失败（不影响面试）：{metrics_error}")
             else:
                 logger.warning(f"[session={session_id}] ASR 识别失败或未识别到语音")
 
@@ -376,6 +385,12 @@ def handle_interview_text():
             if not answer:
                 return jsonify({"error": "文本不能为空"}), 400
             session.add_user_message(answer)
+            # 文字演练只有文本：口头语/字数可算，时长/语速/停顿一律留空
+            # （speech_metrics 对无音频的情况返回 None，前端显示"—"）。
+            try:
+                session.add_expression(speech_metrics(answer))
+            except Exception as metrics_error:   # noqa: BLE001
+                logger.warning(f"[表达] 指标计算失败（不影响演练）：{metrics_error}")
             result = llm_interview(role, session.get_history(), state,
                                    pressure=session.pressure)
 

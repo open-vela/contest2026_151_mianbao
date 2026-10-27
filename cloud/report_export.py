@@ -116,6 +116,53 @@ def to_markdown(snapshot) -> str:
         if score.get("summary"):
             lines += [f"**一句话总评**：{score['summary']}", ""]
 
+    # 表达状态（2026-10-27）：语速 / 口头语 / 停顿。只做展示，不进评分维度 ——
+    # 评分那套四维口径与报告正文一致（台账 §11.34），不在这里另起一套。
+    expression = snapshot.get("expression") or []
+    if expression:
+        lines += ["## 表达状态", ""]
+        answered = [e for e in expression if isinstance(e, dict)]
+        durations = [e["duration_sec"] for e in answered
+                     if isinstance(e.get("duration_sec"), (int, float))]
+        speeds = [e["chars_per_min"] for e in answered
+                  if isinstance(e.get("chars_per_min"), (int, float))]
+        filler_total = sum(int(e.get("fillers") or 0) for e in answered)
+        chars_total = sum(int(e.get("chars") or 0) for e in answered)
+        detail = {}
+        for e in answered:
+            for word, n in (e.get("filler_detail") or {}).items():
+                detail[word] = detail.get(word, 0) + int(n)
+
+        if speeds:
+            avg_speed = round(sum(speeds) / len(speeds))
+            lines.append(f"- **平均语速**：{avg_speed} 字/分钟（参考区间 200~260）")
+        else:
+            lines.append("- **语速/停顿**：本次为文字演练，无音频数据 —— 不统计")
+        if chars_total:
+            lines.append(f"- **口头语**：共 {filler_total} 次 / {chars_total} 字"
+                         + (f"（{'、'.join('%s×%d' % (k, v) for k, v in sorted(detail.items(), key=lambda kv: -kv[1]))}）" if detail else ""))
+        if durations:
+            lines.append(f"- **平均每轮回答**：{sum(durations) / len(durations):.1f} 秒")
+        lines.append("")
+
+        lines += ["| 轮次 | 字数 | 语速(字/分) | 口头语 | 停顿(次/最长) | 时长 |",
+                  "| --- | --- | --- | --- | --- | --- |"]
+        for e in answered:
+            speed = e.get("chars_per_min")
+            pauses = e.get("pauses")
+            longest = e.get("longest_pause_sec")
+            duration = e.get("duration_sec")
+            lines.append("| %s | %s | %s | %s | %s | %s |" % (
+                e.get("round", "?"),
+                e.get("chars", "—"),
+                f"{speed:.0f}" if isinstance(speed, (int, float)) else "—",
+                e.get("fillers", 0),
+                f"{pauses}/{longest:.1f}s" if isinstance(pauses, int)
+                and isinstance(longest, (int, float)) else "—",
+                f"{duration:.1f}s" if isinstance(duration, (int, float)) else "—",
+            ))
+        lines.append("")
+
     # 逐题复盘：每题「问题 / 他的原话 / 更好的答法」。
     # 这是这份报告里**最像"练习工具"**的一节 —— 总分和维度只说明现状，
     # 这一节才告诉他下一遍该怎么答。

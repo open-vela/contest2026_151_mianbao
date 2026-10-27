@@ -544,5 +544,49 @@ class TestTextInterview(RouteTestCase):
         self.assertEqual(spoken, "第一问？ 第二问？")
 
 
+class TestExpressionMetrics(RouteTestCase):
+    """副语言指标接线（2026-10-27）—— 指标要真进快照，不能只是算完就丢。"""
+
+    def test_文字演练_记录口头语且不编语速(self):
+        with mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "下一个问题？",
+                                             "next_action": "continue"}):
+            response = self.client.post("/api/interview/text", json={
+                "session_id": SID, "role": "AI 应用开发",
+                "text": "嗯，那个，我先说结论，然后讲依据。"})
+        self.assertEqual(response.status_code, 200)
+
+        snapshot = self.client.get(f"/api/history?session_id={SID}").get_json()
+        expr = snapshot.get("expression") or []
+        self.assertEqual(len(expr), 1)
+        self.assertEqual(expr[0]["fillers"], 2)          # 嗯 + 那个
+        self.assertGreater(expr[0]["chars"], 0)
+        self.assertIsNone(expr[0]["duration_sec"], "文字演练不能编造时长")
+        self.assertIsNone(expr[0]["chars_per_min"], "文字演练不能编造语速")
+
+    def test_板子链路_音频指标入库(self):
+        import base64
+        from test_speech_metrics import make_wav
+
+        audio = base64.b64encode(make_wav([(1.0, True), (1.0, False),
+                                           (1.0, True)])).decode()
+        with mock.patch.object(cloud_app, "asr_audio_to_text", return_value="我负责检索链路。"), \
+             mock.patch.object(cloud_app, "llm_interview",
+                               return_value={"text": "下一个问题？",
+                                             "next_action": "continue"}), \
+             mock.patch.object(cloud_app, "tts_text_to_audio", return_value="ZmFrZQ=="):
+            response = self.client.post("/api/interview", json={
+                "session_id": SID, "role": "AI 应用开发",
+                "state": "recording_finished", "audio": audio})
+        self.assertEqual(response.status_code, 200)
+
+        snapshot = self.client.get(f"/api/history?session_id={SID}").get_json()
+        expr = snapshot.get("expression") or []
+        self.assertEqual(len(expr), 1)
+        self.assertAlmostEqual(expr[0]["duration_sec"], 3.0, places=1)
+        self.assertEqual(expr[0]["pauses"], 1)
+        self.assertIsNotNone(expr[0]["chars_per_min"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
