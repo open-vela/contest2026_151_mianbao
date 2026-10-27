@@ -622,5 +622,30 @@ class TestGrowthRoute(RouteTestCase):
         self.assertEqual([p["session_id"] for p in body["points"]], [self.SID2])
 
 
+class TestPdfExport(RouteTestCase):
+    """PDF 导出接线（2026-10-27）—— 返回的必须是真 PDF，不是 HTML 错误页。"""
+
+    def test_pdf_export(self):
+        try:
+            import report_pdf
+        except Exception:
+            self.skipTest("未安装 reportlab（pip install reportlab）")
+        if not report_pdf.available():
+            self.skipTest("reportlab 不可用")
+
+        session_store.save(snapshot(SID, score={
+            "total": 70,
+            "dimensions": [{"name": "深度与原理", "score": 6, "max": 10,
+                            "comment": "展开不够。"}],
+        }, expression=[{"round": 1, "chars": 20, "fillers": 1,
+                        "duration_sec": 8.0, "chars_per_min": 200,
+                        "pauses": 1, "longest_pause_sec": 0.6}]))
+
+        response = self.client.get(f"/api/export/{SID}?format=pdf")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertTrue(response.data.startswith(b"%PDF"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -542,9 +542,37 @@ def text_page():
     return app.send_static_file('index.html')
 
 
+def _export_pdf(snap):
+    """PDF 导出（2026-10-27）。
+
+    reportlab 是**可选依赖**：没装时给可读的 503，而不是让整站 import 失败、
+    也不是答 500 —— 与 app.py 顶部"缺 key 就拒绝启动"相反：缺 PDF 只是一项
+    导出格式不可用，面试本身完全不受影响。
+    """
+    try:
+        import report_pdf
+    except Exception as error:          # noqa: BLE001
+        logger.error(f"[PDF] 模块导入失败（多半没装 reportlab）：{error}")
+        return jsonify({"error": "PDF 导出不可用：未安装 reportlab，"
+                                 "请执行 pip install -r requirements.txt"}), 503
+    if not report_pdf.available():
+        return jsonify({"error": "PDF 导出不可用：未安装 reportlab"}), 503
+    try:
+        body = report_pdf.render(snap)
+    except Exception as error:          # noqa: BLE001 —— 导出失败不能变 500 裸错误
+        logger.error(f"[PDF] 生成失败 session={snap.get('session_id')}: {error}",
+                     exc_info=True)
+        return jsonify({"error": "PDF 生成失败，请改用 Markdown 导出"}), 500
+
+    payload = io.BytesIO(body)
+    payload.seek(0)
+    return send_file(payload, mimetype="application/pdf", as_attachment=True,
+                     download_name=report_export.filename(snap, "pdf"))
+
+
 @app.route('/api/export/<session_id>', methods=['GET'])
 def export_session(session_id):
-    """把一场面试导出成可下载的文件：`?format=md`（默认）或 `?format=json`。
+    """把一场面试导出成可下载的文件：`?format=md`（默认）/ `json` / `pdf`。
 
     纯增量：只**读**会话，不创建、不修改，因此对板子那条链路没有任何影响。
     内存优先、磁盘兜底 —— 重启之后照样能把上一场的报告导出来。
@@ -553,9 +581,13 @@ def export_session(session_id):
     if snap is None:
         return jsonify({"error": "找不到这场面试（会话不存在或已过期）"}), 404
 
-    rendered = report_export.export(snap, request.args.get('format', 'md'))
+    fmt = (request.args.get('format', 'md') or 'md').lower()
+    if fmt == 'pdf':
+        return _export_pdf(snap)
+
+    rendered = report_export.export(snap, fmt)
     if rendered is None:
-        return jsonify({"error": "不支持的格式，可选 md / json"}), 400
+        return jsonify({"error": "不支持的格式，可选 md / json / pdf"}), 400
 
     body, mimetype, filename = rendered
     # BytesIO 直接送，不落临时文件：报告只有几十 KB，且没有"下载完要清理"的问题。

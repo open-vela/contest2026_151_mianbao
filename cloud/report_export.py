@@ -115,6 +115,18 @@ def to_markdown(snapshot) -> str:
             lines.append("")
         if score.get("summary"):
             lines += [f"**一句话总评**：{score['summary']}", ""]
+        # 下次练习重点：从本场最低分维度派生（不另编建议，只排序摘取）。
+        ranked = sorted(
+            [d for d in dimensions
+             if isinstance(d, dict) and isinstance(d.get("score"), (int, float))],
+            key=lambda d: d["score"])
+        focus = [d for d in ranked if d["score"] < d.get("max", 10)][:2]
+        if focus:
+            lines += ["### 下次练习重点", ""]
+            for i, d in enumerate(focus, 1):
+                lines.append(f"{i}. **{d.get('name', '')}**（{d.get('score')} / "
+                             f"{d.get('max', 10)}）：{d.get('comment') or '本场失分最多'}")
+            lines.append("")
 
     # 表达状态（2026-10-27）：语速 / 口头语 / 停顿。只做展示，不进评分维度 ——
     # 评分那套四维口径与报告正文一致（台账 §11.34），不在这里另起一套。
