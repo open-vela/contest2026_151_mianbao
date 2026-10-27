@@ -35,6 +35,13 @@
 
 static lv_obj_t *g_page_idle;
 static lv_obj_t *g_page_live;
+static lv_obj_t *g_page_wifi;
+static lv_obj_t *g_wifi_ssid_ta;
+static lv_obj_t *g_wifi_psk_ta;
+static lv_obj_t *g_wifi_kb;
+static lv_obj_t *g_wifi_status;
+static ui_wifi_cb_t g_wifi_cb;
+static int g_wifi_page_visible;
 static lv_obj_t *g_idle_role;
 static lv_obj_t *g_live_role;
 static lv_obj_t *g_idle_pressure;
@@ -46,6 +53,9 @@ static void (*g_volume_cb)(int delta);
 static const lv_font_t *g_font_title;
 static const lv_font_t *g_font_body;
 static const lv_font_t *g_font_hint;
+
+/* 前向声明：待机页的「Wi-Fi」按钮要用它（定义在文件后部的配网段）。 */
+static void wifi_open_event(lv_event_t *e);
 
 static int g_ready;             /* LVGL 与两页都就绪才置 1 —— pump/切页的守卫 */
 static int g_in_session = -1;   /* 界面当前在哪一页；-1 = 尚未决定 */
@@ -94,6 +104,27 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
     lv_obj_set_style_text_color(label, lv_color_hex(color), 0);
     lv_obj_align(label, align, x, y);
     return label;
+}
+
+/* 通用文字按钮（配网页的「连接/跳过」、待机页的「Wi-Fi」共用）。 */
+static lv_obj_t *make_text_button(lv_obj_t *parent, const char *text,
+                                  lv_event_cb_t cb, int w, int h,
+                                  const lv_font_t *font)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_t *label;
+
+    lv_obj_set_size(btn, w, h);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_COLOR), 0);
+    lv_obj_set_style_radius(btn, 10, 0);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+
+    label = lv_label_create(btn);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(UI_TEXT_COLOR), 0);
+    lv_obj_center(label);
+    return btn;
 }
 
 /* ---------- 触摸音量控件（2026-10-19）---------- */
@@ -200,6 +231,18 @@ static void build_idle_page(void)
 
     /* 触摸音量：待机页就能调好，面试中页也有一排（见 build_live_page） */
     build_volume_row(g_page_idle, &g_idle_volume, compact);
+
+    /* 右上角「Wi-Fi」：随时重开配网页（密码写错、换热点时不用清 /data）。
+     * 用 hint 字号 —— body(28) 塞进这个小按钮会顶边。 */
+    {
+        lv_obj_t *wifi_btn = make_text_button(g_page_idle, "Wi-Fi",
+                                              wifi_open_event,
+                                              compact ? 74 : 100,
+                                              compact ? 34 : 42,
+                                              g_font_hint);
+        lv_obj_align(wifi_btn, LV_ALIGN_TOP_RIGHT,
+                     compact ? -6 : -18, compact ? 6 : 16);
+    }
 }
 
 static void build_live_page(void)
@@ -220,6 +263,136 @@ static void build_live_page(void)
     build_volume_row(g_page_live, &g_live_volume, compact);
 
     lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);   /* 开机先显示待机页 */
+}
+
+/* ---------- Wi-Fi 配网页（2026-10-27）---------- */
+/*
+ * 目标：第一次拿到板子的普通用户，不用记 wapi 命令、不用连串口 —— 开机直接
+ * 在屏上输入热点名和密码。输入用 LVGL 自带键盘（固件里 LV_USE_KEYBOARD=y）。
+ *
+ * 线程纪律不变：本页只在主线程建/改；"连接"回调里**不做阻塞操作**，只保存
+ * 凭据并让 main.c 给工作线程投一条 CMD_WIFI_CONNECT。
+ */
+
+static void wifi_ta_event(lv_event_t *e)
+{
+    lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
+
+    if (g_wifi_kb != NULL && ta != NULL) {
+        lv_keyboard_set_textarea(g_wifi_kb, ta);   /* 点哪个框，键盘就输哪个 */
+    }
+}
+
+static void wifi_skip_event(lv_event_t *e)
+{
+    (void)e;
+    interview_ui_show_wifi(0);
+}
+
+/* 待机页右上角的「Wi-Fi」：随时重开配网页（密码写错时不用清 /data）。 */
+static void wifi_open_event(lv_event_t *e)
+{
+    (void)e;
+    if (g_wifi_ssid_ta != NULL) {
+        lv_textarea_set_text(g_wifi_ssid_ta, "");
+    }
+    if (g_wifi_psk_ta != NULL) {
+        lv_textarea_set_text(g_wifi_psk_ta, "");
+    }
+    interview_ui_show_wifi(1);
+}
+
+static void wifi_connect_event(lv_event_t *e)
+{
+    const char *ssid;
+    const char *psk;
+
+    (void)e;
+    ssid = g_wifi_ssid_ta != NULL ? lv_textarea_get_text(g_wifi_ssid_ta) : NULL;
+    psk  = g_wifi_psk_ta  != NULL ? lv_textarea_get_text(g_wifi_psk_ta)  : NULL;
+
+    if (ssid == NULL || ssid[0] == '\0' || psk == NULL || psk[0] == '\0') {
+        if (g_wifi_status != NULL) {
+            lv_label_set_text(g_wifi_status, "请填写热点名称和密码");
+        }
+        return;
+    }
+    if (g_wifi_cb == NULL || g_wifi_cb(ssid, psk) != 0) {
+        if (g_wifi_status != NULL) {
+            lv_label_set_text(g_wifi_status, "保存失败，请重试");
+        }
+        return;
+    }
+    if (g_wifi_status != NULL) {
+        lv_label_set_text(g_wifi_status, "已保存，正在连接…");
+    }
+    interview_ui_show_wifi(0);      /* 回到待机页；连接在工作线程继续 */
+}
+
+static void build_wifi_page(void)
+{
+    int32_t h = ui_height();
+    int compact = h > 0 && h < 480;
+    lv_obj_t *btn_connect;
+    lv_obj_t *btn_skip;
+
+    if (h <= 0) {
+        h = 800;        /* 取不到分辨率时按常规布局走，总比除零好 */
+    }
+
+    g_page_wifi = make_page();
+
+    make_label(g_page_wifi, "连接 Wi-Fi", g_font_title, UI_TEXT_COLOR,
+               LV_ALIGN_TOP_MID, 0, compact ? 10 : (int)(h * 0.05));
+    make_label(g_page_wifi, "首次使用：输入热点名称和密码（只需设置一次）",
+               g_font_hint, UI_HINT_COLOR,
+               LV_ALIGN_TOP_MID, 0, compact ? 44 : (int)(h * 0.14));
+
+    g_wifi_ssid_ta = lv_textarea_create(g_page_wifi);
+    lv_textarea_set_one_line(g_wifi_ssid_ta, true);
+    lv_textarea_set_placeholder_text(g_wifi_ssid_ta, "热点名称（SSID）");
+    lv_obj_set_size(g_wifi_ssid_ta, LV_PCT(80), compact ? 40 : 52);
+    lv_obj_align(g_wifi_ssid_ta, LV_ALIGN_TOP_MID, 0,
+                 compact ? 80 : (int)(h * 0.21));
+
+    g_wifi_psk_ta = lv_textarea_create(g_page_wifi);
+    lv_textarea_set_one_line(g_wifi_psk_ta, true);
+    lv_textarea_set_password_mode(g_wifi_psk_ta, true);
+    lv_textarea_set_placeholder_text(g_wifi_psk_ta, "密码");
+    lv_obj_set_size(g_wifi_psk_ta, LV_PCT(80), compact ? 40 : 52);
+    lv_obj_align(g_wifi_psk_ta, LV_ALIGN_TOP_MID, 0,
+                 compact ? 130 : (int)(h * 0.30));
+
+    btn_connect = make_text_button(g_page_wifi, "连接", wifi_connect_event,
+                                   compact ? 120 : 180, compact ? 40 : 52,
+                                   g_font_body);
+    btn_skip = make_text_button(g_page_wifi, "跳过", wifi_skip_event,
+                                compact ? 100 : 140, compact ? 40 : 52,
+                                g_font_body);
+    lv_obj_align(btn_connect, LV_ALIGN_TOP_MID, compact ? -80 : -110,
+                 compact ? 185 : (int)(h * 0.40));
+    lv_obj_align(btn_skip, LV_ALIGN_TOP_MID, compact ? 80 : 110,
+                 compact ? 185 : (int)(h * 0.40));
+
+    g_wifi_status = make_label(g_page_wifi, "", g_font_hint, UI_ROLE_COLOR,
+                               LV_ALIGN_TOP_MID, 0, compact ? 235 : (int)(h * 0.48));
+
+    g_wifi_kb = lv_keyboard_create(g_page_wifi);
+    lv_obj_set_size(g_wifi_kb, LV_PCT(100),
+                    compact ? (h * 42 / 100) : (h * 45 / 100));
+    lv_obj_align(g_wifi_kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_mode(g_wifi_kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+    lv_keyboard_set_textarea(g_wifi_kb, g_wifi_ssid_ta);
+    lv_obj_set_style_bg_color(g_wifi_kb, lv_color_hex(UI_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(g_wifi_kb, LV_OPA_COVER, 0);
+
+    /* 点输入框就把键盘绑过去（CLICKED 与 FOCUSED 都挂：触摸与键盘导航都覆盖） */
+    lv_obj_add_event_cb(g_wifi_ssid_ta, wifi_ta_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(g_wifi_ssid_ta, wifi_ta_event, LV_EVENT_FOCUSED, NULL);
+    lv_obj_add_event_cb(g_wifi_psk_ta, wifi_ta_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(g_wifi_psk_ta, wifi_ta_event, LV_EVENT_FOCUSED, NULL);
+
+    lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);   /* 默认不显示 */
 }
 
 /* ---------- 对外接口 ---------- */
@@ -276,6 +449,7 @@ int interview_ui_init(void)
 
     build_idle_page();
     build_live_page();
+    build_wifi_page();
 
     g_ready = 1;
     g_in_session = 0;
@@ -342,6 +516,37 @@ void interview_ui_set_pressure(const char *pressure)
     }
 }
 
+void interview_ui_set_wifi_cb(ui_wifi_cb_t cb)
+{
+    g_wifi_cb = cb;
+}
+
+void interview_ui_show_wifi(int show)
+{
+    show = show ? 1 : 0;
+
+    if (!g_ready || g_page_wifi == NULL || show == g_wifi_page_visible) {
+        return;
+    }
+    g_wifi_page_visible = show;
+
+    if (show) {
+        lv_obj_add_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_page_wifi);
+    } else {
+        lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);
+        if (g_in_session) {
+            lv_obj_remove_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_page_live);
+        } else {
+            lv_obj_remove_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_page_idle);
+        }
+    }
+}
+
 void interview_ui_set_session(int in_session)
 {
     in_session = in_session ? 1 : 0;
@@ -352,10 +557,15 @@ void interview_ui_set_session(int in_session)
     g_in_session = in_session;
 
     if (in_session) {
+        /* 配网页只是"首次使用"的过渡页：一旦开始面试就收起，别挡住面试中页。 */
+        if (g_page_wifi != NULL && g_wifi_page_visible) {
+            lv_obj_add_flag(g_page_wifi, LV_OBJ_FLAG_HIDDEN);
+            g_wifi_page_visible = 0;
+        }
         lv_obj_add_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(g_page_live);
-    } else {
+    } else if (!g_wifi_page_visible) {
         lv_obj_add_flag(g_page_live, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(g_page_idle, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(g_page_idle);

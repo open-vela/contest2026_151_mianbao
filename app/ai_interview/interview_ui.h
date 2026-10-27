@@ -43,4 +43,19 @@ void interview_ui_set_volume(int percent);
 /* 会话开始/结束 → 切页：1 = 面试中页，0 = 待机页。只在真的变化时才动界面。 */
 void interview_ui_set_session(int in_session);
 
+/*
+ * Wi-Fi 配网页（2026-10-27）—— 首次没有凭据时显示，用户用屏上键盘输入
+ * 热点名与密码，不用再碰串口。
+ *
+ * 回调运行在**主线程**（LVGL 事件上下文），参数是 SSID 与密码（不含引号）。
+ * 返回 0 表示已接受（保存并开始连接），非 0 时界面提示保存失败、留在配网页。
+ * 回调里**不要做阻塞操作**（连接由工作线程做，见 main.c 的 CMD_WIFI_CONNECT）。
+ */
+typedef int (*ui_wifi_cb_t)(const char *ssid, const char *psk);
+
+void interview_ui_set_wifi_cb(ui_wifi_cb_t cb);
+
+/* 1 = 显示配网页（隐藏其它页）；0 = 收起配网页，回到待机/面试页。 */
+void interview_ui_show_wifi(int show);
+
 #endif /* __INTERVIEW_UI_H__ */

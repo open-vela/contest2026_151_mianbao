@@ -28,4 +28,16 @@
  */
 int wifi_connect_boot(void);
 
+/*
+ * 凭据是否已配置（环境变量或 /data/ai_interview_wifi 至少有一处）。
+ * 返回 1 已配置，0 未配置。启动时据此决定要不要弹配网页。
+ */
+int wifi_have_creds(void);
+
+/*
+ * 保存凭据到 /data/ai_interview_wifi（屏幕配网页用）。
+ * 返回 0 成功，-1 写入失败，-2 凭据不合法（空/含不支持字符）。
+ */
+int wifi_save_creds(const char *ssid, const char *psk);
+
 #endif /* __WIFI_CONNECT_H__ */

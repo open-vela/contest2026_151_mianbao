@@ -74,17 +74,18 @@ static int cred_ok(const char *s)
     return 1;
 }
 
-static void persist_creds(const char *ssid, const char *psk)
+static int persist_creds(const char *ssid, const char *psk)
 {
     FILE *fp = fopen(WIFI_PREF_PATH, "w");
 
     if (fp == NULL) {
-        printf("[Wifi] 提示: 无法写入 %s（下次仍需设环境变量）\n", WIFI_PREF_PATH);
-        return;
+        printf("[Wifi] 提示: 无法写入 %s（下次仍需重新设置）\n", WIFI_PREF_PATH);
+        return -1;
     }
     fprintf(fp, "%s\n%s\n", ssid, psk);
     fclose(fp);
     printf("[Wifi] 凭据已保存到 %s（下次开机自动使用）\n", WIFI_PREF_PATH);
+    return 0;
 }
 
 static int load_creds(char *ssid, char *psk)
@@ -100,7 +101,7 @@ static int load_creds(char *ssid, char *psk)
         ssid[WIFI_CRED_MAX - 1] = '\0';
         psk[WIFI_CRED_MAX - 1] = '\0';
         printf("[Wifi] 凭据来源: 环境变量 WIFI_SSID / WIFI_PSK\n");
-        persist_creds(ssid, psk);       /* 首次设了环境变量就记住 */
+        (void)persist_creds(ssid, psk);   /* 首次设了环境变量就记住 */
         return 0;
     }
 
@@ -150,6 +151,23 @@ static int run_cmd(const char *cmd, const char *label)
         return -1;
     }
     return 0;
+}
+
+int wifi_have_creds(void)
+{
+    char ssid[WIFI_CRED_MAX];
+    char psk[WIFI_CRED_MAX];
+
+    return load_creds(ssid, psk) == 0;
+}
+
+int wifi_save_creds(const char *ssid, const char *psk)
+{
+    if (!cred_ok(ssid) || !cred_ok(psk)) {
+        printf("[Wifi] 凭据不合法（空或含不支持字符），未保存\n");
+        return -2;
+    }
+    return persist_creds(ssid, psk);
 }
 
 int wifi_connect_boot(void)

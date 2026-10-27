@@ -59,8 +59,9 @@ static int g_key2_hold = 0;  /* K2 已按住的拍数（100ms/拍）—— 长�
 /* ---- 主线程 -> 工作线程 ---- */
 typedef enum {
     CMD_NONE = 0,
-    CMD_START,      /* K1：开始一轮面试 */
-    CMD_CANCEL      /* K2：取消 */
+    CMD_START,          /* K1：开始一轮面试 */
+    CMD_CANCEL,         /* K2：取消 */
+    CMD_WIFI_CONNECT    /* 屏幕配网页提交：后台连 Wi-Fi（2026-10-27） */
 } app_cmd_t;
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -167,6 +168,21 @@ static void app_volume_step(int delta)
     save_volume_pref();
     interview_ui_set_volume(g_volume_pct);
     printf("[Main] 音量：%d%%\n", g_volume_pct);
+}
+
+/* 屏幕配网页提交（LVGL 事件上下文 = 主线程）：只写盘 + 投命令，**不阻塞**。
+ * 真正的连接在工作线程里做（会阻塞几秒，见 pipeline_worker 的 CMD_WIFI_CONNECT）。
+ * 返回 0 = 已接受，界面据此收起配网页；非 0 = 保存失败，界面留在原页。 */
+static int app_wifi_setup(const char *ssid, const char *psk)
+{
+    if (wifi_save_creds(ssid, psk) != 0) {
+        return -1;
+    }
+    printf("[Main] 已从屏幕保存热点「%s」，通知后台连接\n", ssid);
+    pthread_mutex_lock(&g_lock);
+    g_cmd = CMD_WIFI_CONNECT;
+    pthread_mutex_unlock(&g_lock);
+    return 0;
 }
 
 /* ---------- 事件队列 ---------- */
@@ -431,6 +447,18 @@ static void *pipeline_worker(void *arg)
         cmd = g_cmd;
         g_cmd = CMD_NONE;
         pthread_mutex_unlock(&g_lock);
+
+        /* 屏幕配网页提交 → 凭据已由主线程写盘（见 app_wifi_setup），
+         * 这里只负责真正执行连接（会阻塞几秒，所以必须在本线程）。 */
+        if (cmd == CMD_WIFI_CONNECT) {
+            printf("[Main] 收到屏幕配网请求，开始连接...\n");
+            if (wifi_connect_boot() == 0) {
+                printf("[Main] Wi-Fi 连接命令已完成（以云端健康检查为准）\n");
+            } else {
+                printf("[Main] Wi-Fi 连接未完成 —— 可在屏幕上重新设置\n");
+            }
+            continue;
+        }
 
         if (cmd != CMD_START) {
             usleep(MAIN_LOOP_MS * 1000 / 2);
@@ -700,6 +728,14 @@ int main(int argc, char *argv[])
         interview_ui_set_pressure(current_pressure());
         interview_ui_set_volume(g_volume_pct);
         interview_ui_set_volume_cb(app_volume_step);
+
+        /* 首次使用（没有 Wi-Fi 凭据）直接进配网页：普通用户不用碰串口。
+         * 有凭据就不打扰，工作线程启动时会自动连（见 pipeline_worker）。 */
+        if (!wifi_have_creds()) {
+            printf("[Main] 未找到 Wi-Fi 凭据 —— 屏幕上显示配网页\n");
+            interview_ui_set_wifi_cb(app_wifi_setup);
+            interview_ui_show_wifi(1);
+        }
     } else {
         printf("[Main] 屏幕不可用 —— 界面相关功能跳过，面试流程不受影响\n");
     }
