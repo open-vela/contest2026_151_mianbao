@@ -200,6 +200,31 @@ def summary_of(snapshot, mtime=None) -> dict:
     }
 
 
+def recent_snapshots(limit=20) -> list:
+    """按 mtime 倒序取最近若干场的**完整快照**（成长追踪用，2026-10-27）。
+
+    与 `list_summaries` 的差别：那个只压成列表页要的几个字段；`/api/growth`
+    要看四维分与表达指标，必须拿完整快照。坏文件照样跳过（同 list_summaries
+    的取舍：一个半截文件不能拖垮整页）。
+    """
+    try:
+        entries = [
+            e for e in os.scandir(DATA_DIR)
+            if e.is_file() and e.name.endswith(SUFFIX)
+            and is_valid_id(e.name[:-len(SUFFIX)])
+        ]
+    except OSError:
+        return []
+
+    entries.sort(key=_safe_mtime, reverse=True)
+    snapshots = []
+    for entry in entries[:max(0, int(limit))]:
+        snapshot = load(entry.name[:-len(SUFFIX)])
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
 def list_summaries(limit=20) -> list:
     """列出最近的若干场会话（摘要，按最后写入时间倒序）。
 

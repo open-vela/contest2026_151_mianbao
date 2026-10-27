@@ -588,5 +588,39 @@ class TestExpressionMetrics(RouteTestCase):
         self.assertIsNotNone(expr[0]["chars_per_min"])
 
 
+class TestGrowthRoute(RouteTestCase):
+    """成长追踪接线（2026-10-27）：/api/growth 要真从落盘快照聚合。"""
+
+    SID2 = "1a2b3c4d-0000-1111-2222-333344445555"
+
+    def test_empty_when_no_sessions(self):
+        body = self.client.get("/api/growth").get_json()
+        self.assertEqual(body["points"], [])
+        self.assertIsNone(body["deltas"])
+        self.assertEqual(body["weak_points"], [])
+
+    def test_aggregates_scored_sessions(self):
+        dims1 = [{"name": "深度与原理", "score": 5}, {"name": "技术正确性", "score": 7}]
+        dims2 = [{"name": "深度与原理", "score": 7}, {"name": "技术正确性", "score": 7}]
+        session_store.save(snapshot(SID, created_at=1000,
+                                    score={"total": 60, "dimensions": dims1}))
+        session_store.save(snapshot(self.SID2, created_at=2000,
+                                    score={"total": 68, "dimensions": dims2}))
+
+        body = self.client.get("/api/growth?role=AI 应用开发").get_json()
+        self.assertEqual(len(body["points"]), 2)
+        self.assertEqual(body["deltas"]["total"], 8)
+        by_name = {d["name"]: d["delta"] for d in body["deltas"]["dimensions"]}
+        self.assertEqual(by_name["深度与原理"], 2)
+
+    def test_role_filter(self):
+        session_store.save(snapshot(SID, created_at=1000,
+                                    score={"total": 60, "dimensions": []}))
+        session_store.save(snapshot(self.SID2, created_at=2000, role="Data Analyst",
+                                    score={"total": 80, "dimensions": []}))
+        body = self.client.get("/api/growth?role=Data Analyst").get_json()
+        self.assertEqual([p["session_id"] for p in body["points"]], [self.SID2])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

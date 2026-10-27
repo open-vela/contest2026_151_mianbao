@@ -357,6 +357,46 @@
   }
   .expr-t th { color: var(--ink-dim); font-weight: 500; }
 
+  /* ---------- 成长追踪（/history 顶部，2026-10-27） ---------- */
+  /* 单序列（总分）折线：不用图例（标题就是序列名），只在末点直接标数值；
+     网格与轴用 --line / --ink-dim 退到背景层。颜色全部走 CSS 变量，
+     页面若以后加深色主题，图表自动跟随。 */
+  .growth {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+  }
+  .growth-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .growth-head h2 { font-size: 15px; margin: 0; }
+  .growth-sub { font-size: 12.5px; color: var(--ink-dim); }
+  .growth-role {
+    margin-left: auto; font: inherit; font-size: 12.5px; color: var(--ink-dim);
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 3px 8px;
+  }
+  .growth-chart { position: relative; margin-top: 10px; }
+  .growth-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .growth-tip {
+    position: absolute; pointer-events: none; display: none; z-index: 2;
+    background: var(--ink); color: #fff; font-size: 12px; line-height: 1.5;
+    border-radius: 8px; padding: 6px 9px; white-space: nowrap;
+    transform: translate(-50%, -112%);
+  }
+  .growth-note { font-size: 12.5px; color: var(--ink-dim); margin-top: 8px; line-height: 1.6; }
+  .growth-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .gchip {
+    font-size: 12px; border-radius: 999px; padding: 3px 10px;
+    background: var(--brand-dim); color: var(--brand);
+  }
+  .gchip.warn { background: #fff3e6; color: #b45309; }
+  .growth details { margin-top: 10px; }
+  .growth summary { cursor: pointer; font-size: 12.5px; color: var(--brand); }
+  .growth table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  .growth th, .growth td {
+    padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .growth th { color: var(--ink-dim); font-weight: 500; }
+
   /* ---------- 文字演练（/text） ---------- */
   /* 开场面板：选岗位 + 开始。 */
   .starter {
@@ -492,6 +532,8 @@
      刻意不复用同一个容器 —— 两者的滚动、空态、轮询行为都不一样，
      塞在一起只会让两边都变难读。 -->
 <main id="hist" style="display:none">
+  <!-- 成长追踪（2026-10-27）：总分走势 + 最近两场维度对比 + 薄弱点。 -->
+  <div class="wrap" id="growth" style="display:none"></div>
   <!-- 批量删除工具条（2026-10-19）：全选 + 删除选中。列表每 5 秒重建一次，
        勾选状态存在 JS 的 picked 里，重建后按 session_id 恢复。 -->
   <div class="wrap hist-toolbar" id="histToolbar" style="display:none">
@@ -530,6 +572,7 @@
   var elReport = document.getElementById("report");
   var elJump   = document.getElementById("jump");
   var elHist     = document.getElementById("hist");
+  var elGrowth   = document.getElementById("growth");
   var elHistWrap = document.getElementById("histWrap");
   var elHistToolbar = document.getElementById("histToolbar");
   var elHistAll     = document.getElementById("histAll");
@@ -1008,9 +1051,202 @@
       })
       .then(function (d) {
         setStatus("ok", "已连接");
-        renderList(d.sessions || []);
+        var items = d.sessions || [];
+        renderList(items);
+        // 成长区块只在"场次集合变了"时重拉 —— 每 5 秒重建整张图会打断悬停。
+        var head = items[0] || {};
+        var fp = items.length + "|" + (head.session_id || "") + "|" +
+                 (head.updated_at || head.mtime || "");
+        if (fp !== growthFingerprint) {
+          growthFingerprint = fp;
+          loadGrowth();
+        }
       })
       .catch(function (e) { setStatus("err", "连接中断（" + e.message + "）"); });
+  }
+
+  // ---------- 成长追踪（/history 顶部，2026-10-27 · P0-1） ----------
+  //
+  // 只画**已评分**且**同一岗位**的场次：不同岗位的分数不在一个尺度上，混在
+  // 一条线上会得出错误的"进步"结论。聚合逻辑全在服务端 growth.py（有单测），
+  // 前端只负责画。
+  var growthRole = "";
+  var growthFingerprint = "";
+
+  function growthDate(ts) {
+    if (!ts) { return "—"; }
+    var d = new Date(ts * 1000);
+    return (d.getMonth() + 1) + "/" + d.getDate();
+  }
+
+  function loadGrowth() {
+    fetch("/api/growth?limit=50", { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) { throw new Error("HTTP " + r.status); }
+        return r.json();
+      })
+      .then(function (all) {
+        var points = all.points || [];
+        var scored = points.filter(function (p) { return typeof p.total === "number"; });
+        if (!scored.length) { renderGrowthEmpty(); return; }
+        var roles = [];
+        for (var i = 0; i < points.length; i++) {
+          if (points[i].role && roles.indexOf(points[i].role) < 0) { roles.push(points[i].role); }
+        }
+        if (!growthRole || roles.indexOf(growthRole) < 0) {
+          growthRole = scored[scored.length - 1].role || "";
+        }
+        loadGrowthFor(growthRole, roles);
+      })
+      .catch(function () { /* 静默：连接状态由 loadList 统一显示 */ });
+  }
+
+  function loadGrowthFor(role, roles) {
+    var url = "/api/growth?limit=20" + (role ? "&role=" + encodeURIComponent(role) : "");
+    fetch(url, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { renderGrowth(d, role, roles || []); })
+      .catch(function () { /* 同上 */ });
+  }
+
+  function renderGrowthEmpty() {
+    elGrowth.style.display = "block";
+    elGrowth.innerHTML =
+      '<div class="growth">' +
+        '<div class="growth-head"><h2>成长追踪</h2>' +
+          '<span class="growth-sub">完成 2 场带评分的面试后，这里会画出你的进步曲线</span>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderGrowth(d, role, roles) {
+    var points = (d.points || []).filter(function (p) { return typeof p.total === "number"; });
+    if (points.length < 2) { renderGrowthEmpty(); return; }
+
+    var W = 640, H = 190, L = 34, R = 14, T = 14, B = 26;
+    var iw = W - L - R, ih = H - T - B;
+    var xs = function (i) { return L + (i / (points.length - 1)) * iw; };
+    var ys = function (v) {
+      return T + ih * (1 - Math.max(0, Math.min(100, v)) / 100);
+    };
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="总分随场次变化">';
+    [0, 25, 50, 75, 100].forEach(function (v) {
+      var y = ys(v);
+      svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y +
+        '" stroke="var(--line)" stroke-width="1"></line>' +
+        '<text x="' + (L - 6) + '" y="' + (y + 3.5) + '" text-anchor="end" ' +
+        'font-size="10" fill="var(--ink-dim)">' + v + '</text>';
+    });
+
+    var path = "";
+    for (var i = 0; i < points.length; i++) {
+      path += (i ? " " : "") + xs(i) + "," + ys(points[i].total);
+    }
+    svg += '<polyline points="' + path + '" fill="none" stroke="var(--brand)" ' +
+      'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+
+    for (var j = 0; j < points.length; j++) {
+      var isLast = j === points.length - 1;
+      svg += '<circle class="gpt" data-i="' + j + '" cx="' + xs(j) + '" cy="' +
+        ys(points[j].total) + '" r="' + (isLast ? 5 : 4) + '" fill="' +
+        (isLast ? "var(--brand)" : "var(--card)") +
+        '" stroke="var(--brand)" stroke-width="2"></circle>';
+    }
+    var last = points[points.length - 1];
+    svg += '<text x="' + xs(points.length - 1) + '" y="' + (ys(last.total) - 10) +
+      '" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink)">' +
+      esc(last.total) + '</text>';
+    svg += '<text x="' + xs(0) + '" y="' + (H - 6) + '" text-anchor="start" ' +
+      'font-size="10" fill="var(--ink-dim)">' + growthDate(points[0].created_at) + '</text>' +
+      '<text x="' + xs(points.length - 1) + '" y="' + (H - 6) + '" text-anchor="end" ' +
+      'font-size="10" fill="var(--ink-dim)">' + growthDate(last.created_at) + '</text>';
+    svg += '</svg>';
+
+    var html = '<div class="growth">' +
+      '<div class="growth-head"><h2>成长追踪</h2>' +
+        '<span class="growth-sub">' + esc(role || "全部岗位") + ' · ' + points.length + ' 场</span>';
+    if (roles && roles.length > 1) {
+      html += '<select class="growth-role" id="growthRole">';
+      for (var k = 0; k < roles.length; k++) {
+        html += '<option value="' + esc(roles[k]) + '"' +
+          (roles[k] === role ? " selected" : "") + '>' + esc(roles[k]) + '</option>';
+      }
+      html += '</select>';
+    }
+    html += '</div>';
+    html += '<div class="growth-chart">' + svg +
+      '<div class="growth-tip" id="growthTip"></div></div>';
+
+    if (d.deltas && d.deltas.dimensions && d.deltas.dimensions.length) {
+      var bits = [];
+      if (typeof d.deltas.total === "number") {
+        bits.push("总分 " + (d.deltas.total > 0 ? "+" : "") + d.deltas.total);
+      }
+      d.deltas.dimensions.forEach(function (dim) {
+        bits.push(dim.name + " " + (dim.delta > 0 ? "+" : "") + dim.delta);
+      });
+      html += '<div class="growth-note">较上一场：' + bits.map(esc).join(" · ") + '</div>';
+    } else {
+      html += '<div class="growth-note">再完成一场带评分的面试，就能看到与上一场的维度对比。</div>';
+    }
+
+    if (d.weak_points && d.weak_points.length) {
+      html += '<div class="growth-chips">';
+      d.weak_points.forEach(function (w) {
+        html += '<span class="gchip warn">' + esc(w.name) + ' 平均 ' + esc(w.average) +
+          '（' + esc(w.low_sessions) + '/' + esc(w.sessions) + ' 场低于 6）</span>';
+      });
+      html += '</div>';
+    }
+
+    html += '<details><summary>数据表</summary><table><tr><th>日期</th><th>轮次</th>' +
+      '<th>总分</th><th>语速</th><th>口头语</th><th>停顿</th></tr>';
+    for (var q = 0; q < points.length; q++) {
+      var p = points[q], ex = p.expression || {};
+      html += '<tr><td>' + growthDate(p.created_at) + '</td><td>' + esc(p.rounds) +
+        '</td><td>' + esc(p.total) + '</td><td>' +
+        (typeof ex.avg_speed === "number" ? esc(ex.avg_speed) : "—") + '</td><td>' +
+        (typeof ex.fillers === "number" ? esc(ex.fillers) : "—") + '</td><td>' +
+        (typeof ex.pauses === "number" ? esc(ex.pauses) : "—") + '</td></tr>';
+    }
+    html += '</table></details></div>';
+
+    elGrowth.style.display = "block";
+    elGrowth.innerHTML = html;
+
+    var sel = document.getElementById("growthRole");
+    if (sel) {
+      sel.onchange = function () {
+        growthRole = sel.value;
+        loadGrowthFor(sel.value, roles);
+      };
+    }
+
+    // 悬停提示：点数少，点级 hover 足够（不用十字线）。
+    var tip = document.getElementById("growthTip");
+    var svgEl = elGrowth.querySelector("svg");
+    var circles = elGrowth.querySelectorAll(".gpt");
+    for (var c = 0; c < circles.length; c++) {
+      circles[c].addEventListener("mouseenter", function (ev) {
+        var idx = Number(ev.currentTarget.getAttribute("data-i"));
+        var p = points[idx] || {};
+        var ex = p.expression || {};
+        var lines = [growthDate(p.created_at) + " · " + (p.role || "") + " · " +
+                     p.total + " 分"];
+        if (typeof ex.avg_speed === "number") { lines.push("语速 " + ex.avg_speed + " 字/分"); }
+        if (typeof ex.fillers === "number") { lines.push("口头语 " + ex.fillers + " 次"); }
+        if (typeof ex.pauses === "number") { lines.push("停顿 " + ex.pauses + " 次"); }
+        tip.textContent = lines.join("｜");
+        tip.style.display = "block";
+        var rect = svgEl.getBoundingClientRect();
+        var vb = svgEl.viewBox.baseVal;
+        var scale = rect.width / vb.width;
+        tip.style.left = (ev.currentTarget.cx.baseVal.value * scale) + "px";
+        tip.style.top = (ev.currentTarget.cy.baseVal.value * scale) + "px";
+      });
+      circles[c].addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    }
   }
 
   // ---------- 发送中的"临时气泡" ----------

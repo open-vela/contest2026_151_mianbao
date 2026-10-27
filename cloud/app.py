@@ -14,6 +14,7 @@ from asr_service import asr_audio_to_text
 from tts_service import tts_text_to_audio
 from reply_guard import flatten_for_tts
 from speech_metrics import speech_metrics
+from growth import build_growth
 from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
 import report_export
@@ -480,6 +481,27 @@ def discard_session(session_id):
     logger.info(f"[舍弃] session={session_id} 内存={in_memory} 落盘删除={disk_removed}")
     return jsonify({"discarded": True, "session_id": session_id,
                     "was_in_memory": in_memory, "disk_removed": disk_removed})
+
+
+@app.route('/api/growth', methods=['GET'])
+def growth():
+    """跨场成长追踪（只读，2026-10-27 加 P0-1）。
+
+    `?limit=` 默认 20、上限 50；`?role=` 可选，按岗位过滤（不同岗位的分数
+    不该画在同一条曲线上 —— 曲线只回答"我在这个岗位上有没有变好"）。
+    数据来自落盘快照：活会话每轮也落盘，所以刚结束的那场也在里面。
+    """
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(2, min(limit, 50))
+
+    role = (request.args.get('role') or '').strip()
+    snapshots = session_store.recent_snapshots(limit)
+    if role:
+        snapshots = [s for s in snapshots if s.get('role') == role]
+    return jsonify(build_growth(snapshots, limit=limit))
 
 
 @app.route('/api/sessions', methods=['GET'])
