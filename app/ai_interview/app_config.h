@@ -207,11 +207,11 @@ static inline const char *app_role_at(int index)
 {
     static const char *const roles[APP_ROLE_COUNT] = {
         "AI 应用开发",
-        "AI Agent 开发",
+        "智能体开发",
         "大模型算法工程师",
-        "AI/ML Engineer",
-        "Data Scientist",
-        "Data Analyst",
+        "机器学习工程师",
+        "数据科学家",
+        "数据分析师",
     };
 
     if (index < 0 || index >= APP_ROLE_COUNT) {

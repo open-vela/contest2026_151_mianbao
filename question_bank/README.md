@@ -40,11 +40,11 @@ question_bank/
 | ---- | ---- | ---- | ---- |
 | [`guocong-bincai/ai-interview-guide`](https://github.com/guocong-bincai/ai-interview-guide) | 640 | AI 应用开发 | MIT |
 | [`lengyue1024/BAT_interviews`](https://github.com/lengyue1024/BAT_interviews) | 208 | 大模型算法工程师 / AI 应用开发 | MIT |
-| [`bcefghj/ai-agent-interview-guide`](https://github.com/bcefghj/ai-agent-interview-guide) | 181 | AI Agent 开发 | MIT |
-| [`bcefghj/learn-nanobot`](https://github.com/bcefghj/learn-nanobot) | 134 | AI Agent 开发 | MIT |
+| [`bcefghj/ai-agent-interview-guide`](https://github.com/bcefghj/ai-agent-interview-guide) | 181 | 智能体开发 | MIT |
+| [`bcefghj/learn-nanobot`](https://github.com/bcefghj/learn-nanobot) | 134 | 智能体开发 | MIT |
 | [`aceliuchanghong/FAQ_Of_LLM_Interview`](https://github.com/aceliuchanghong/FAQ_Of_LLM_Interview) | 20 | 大模型算法工程师 | MIT |
 
-岗位分布：**AI 应用开发 748 / AI Agent 开发 315 / 大模型算法工程师 120**。
+岗位分布：**AI 应用开发 748 / 智能体开发 315 / 大模型算法工程师 120**。
 抽取时只取题目、不复制答案；各来源的目录白名单与排除规则（求职向目录、个人面经、
 简历模板等）写在 `import/import_github_bank.py` 的 `SOURCES` 里，逐条可查。
 
@@ -52,7 +52,7 @@ question_bank/
 
 | 来源 | 条数 | 岗位 | 许可 |
 | ---- | ---- | ---- | ---- |
-| [HuggingFace `Davichick/InterviewForge_GenDS`](https://huggingface.co/datasets/Davichick/InterviewForge_GenDS)（`interview_forge_v3_complete.csv`） | 1647 | AI/ML Engineer 576 / Data Scientist 495 / Data Analyst 576 | MIT |
+| [HuggingFace `Davichick/InterviewForge_GenDS`](https://huggingface.co/datasets/Davichick/InterviewForge_GenDS)（`interview_forge_v3_complete.csv`） | 1647 | 机器学习工程师 576 / 数据科学家 495 / 数据分析师 576 | MIT |
 
 > ⚠️ **这份数据集没有 per-record 的来源字段**，上表因此是本仓能提供的**唯一**出处凭证 ——
 > 删掉它就无法回溯这 1647 道题的来源了。原始 CSV 的拉取命令见 `import/import_dataset.py`。

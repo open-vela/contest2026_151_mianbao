@@ -6,16 +6,20 @@
 3. 薄弱点必须"反复失分"，单场低分不贴标签。
 """
 import unittest
+from datetime import date
 
 import growth
 
 
-def snap(sid, created, total=None, dims=None, expression=None, role="AI 应用开发"):
+def snap(sid, created, total=None, dims=None, expression=None, role="AI 应用开发",
+         version=None):
     score = None
     if total is not None or dims:
         score = {"total": total, "dimensions": [
             {"name": name, "score": value} for name, value in (dims or {}).items()
         ]}
+        if version is not None:
+            score["scoring_version"] = version
     return {
         "session_id": sid,
         "role": role,
@@ -102,6 +106,83 @@ class TestBuildGrowth(unittest.TestCase):
         self.assertEqual(len(result["points"]), 2)
         self.assertIsNotNone(result["deltas"])
         self.assertIsInstance(result["weak_points"], list)
+
+    def test_version_mixed_is_flagged(self):
+        """v1（均分）和 v2（加权）混在一起时必须提示不可直接比。"""
+        result = growth.build_growth([
+            snap("a", 100, 60, {"技术正确性": 6}),            # 老场次：无 version → v1
+            snap("b", 200, 70, {"技术正确性": 7}, version=2),  # 新场次：v2
+        ])
+        self.assertTrue(result["version_mixed"])
+        self.assertEqual(result["scoring_versions"], [1, 2])
+
+    def test_same_version_is_not_mixed(self):
+        result = growth.build_growth([
+            snap("a", 100, 60, {"技术正确性": 6}, version=2),
+            snap("b", 200, 70, {"技术正确性": 7}, version=2),
+        ])
+        self.assertFalse(result["version_mixed"])
+        self.assertEqual(result["scoring_versions"], [2])
+
+
+class TestWeakLifecycle(unittest.TestCase):
+    def _points(self, *rows):
+        return growth.points_of([
+            snap(sid, when, total, {"深度与原理": score}) for sid, when, total, score in rows
+        ])
+
+    def test_repeated_low_scores_become_a_lifecycle(self):
+        points = self._points(
+            ("a", "2026-10-01", 50, 5),
+            ("b", "2026-10-03", 55, 4),
+        )
+        items = growth.weak_lifecycle(points, today=date(2026, 10, 4))
+        item = next(i for i in items if i["dimension"] == "深度与原理")
+        self.assertEqual(item["times_seen"], 2)
+        self.assertFalse(item["improved"])
+        self.assertEqual(item["first_seen"], "2026-10-01")
+        self.assertEqual(item["last_seen"], "2026-10-03")
+        self.assertEqual(item["interval_days"], 1)
+        self.assertEqual(item["next_review"], "2026-10-04")
+        self.assertTrue(item["due"])
+
+    def test_two_good_assessments_improve_and_three_archive(self):
+        points = self._points(
+            ("a", "2026-10-01", 50, 5),
+            ("b", "2026-10-03", 55, 5),
+            ("c", "2026-10-05", 70, 7),
+            ("d", "2026-10-07", 80, 8),
+            ("e", "2026-10-09", 85, 9),
+        )
+        item = growth.weak_lifecycle(points, today=date(2026, 10, 10))[0]
+        self.assertEqual(item["times_seen"], 2)
+        self.assertTrue(item["improved"])
+        self.assertTrue(item["archived"])
+        self.assertIsNone(item["next_review"])
+        self.assertFalse(item["due"])
+
+    def test_missing_dimension_does_not_count_as_improvement(self):
+        """模型漏评该维度 ≠ 改善：中间那场没评它，不该中断低分链。"""
+        points = growth.points_of([
+            snap("a", "2026-10-01", 50, {"深度与原理": 5}),
+            snap("b", "2026-10-03", 60, {"技术正确性": 8}),   # 这一场没评"深度与原理"
+            snap("c", "2026-10-05", 70, {"深度与原理": 7}),
+        ])
+        item = growth.weak_lifecycle(points, today=date(2026, 10, 6))[0]
+        self.assertEqual(item["times_seen"], 1)
+        self.assertEqual(item["good_streak"], 1)
+        self.assertFalse(item["improved"])
+
+    def test_review_interval_grows_1_3_7(self):
+        points = self._points(
+            ("a", "2026-10-01", 50, 5),
+            ("b", "2026-10-03", 60, 6),   # 质量 3 → 间隔 1
+            ("c", "2026-10-05", 70, 7),   # 质量 4 → 间隔 3
+        )
+        item = growth.weak_lifecycle(points, today=date(2026, 10, 6))[0]
+        self.assertEqual(item["interval_days"], 3)
+        self.assertEqual(item["next_review"], "2026-10-08")
+        self.assertTrue(item["due"] is False)
 
 
 if __name__ == "__main__":

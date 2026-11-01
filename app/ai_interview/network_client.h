@@ -68,6 +68,11 @@ int cloud_bind_start(char *url_out, size_t url_cap,
                      char *token_out, size_t token_cap);
 
 /* 设置随面试请求发送的账号 token；空串表示未绑定（云端按未归属处理）。 */
+/* 目标问答轮数（2026-11-01）：随面试请求上报；云端建会话时钉住。
+ * 合法范围 4~30，非法值忽略（保持当前值）。 */
+void cloud_set_target_rounds(int rounds);
+int cloud_target_rounds(void);
+
 void cloud_set_user_token(const char *token);
 
 /* 当前 token（未绑定为空串）。 */

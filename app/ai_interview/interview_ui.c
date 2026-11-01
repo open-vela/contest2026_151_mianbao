@@ -51,7 +51,9 @@ static lv_obj_t *g_idle_pressure;
 static lv_obj_t *g_live_pressure;
 static lv_obj_t *g_idle_volume;
 static lv_obj_t *g_live_volume;
+static lv_obj_t *g_idle_rounds;
 static void (*g_volume_cb)(int delta);
+static ui_rounds_cb_t g_rounds_cb;
 
 static const lv_font_t *g_font_title;
 static const lv_font_t *g_font_body;
@@ -128,6 +130,60 @@ static lv_obj_t *make_text_button(lv_obj_t *parent, const char *text,
     lv_obj_set_style_text_color(label, lv_color_hex(UI_TEXT_COLOR), 0);
     lv_obj_center(label);
     return btn;
+}
+
+/* 待机页左上角「− 轮数：10 +」：回调 -1 / +1，由主程序在预设间移动。 */
+static void rounds_button_event(lv_event_t *e)
+{
+    int delta = (int)(intptr_t)lv_event_get_user_data(e);
+
+    if (g_rounds_cb != NULL) {
+        g_rounds_cb(delta);
+    }
+}
+
+static lv_obj_t *make_rounds_button(lv_obj_t *parent, const char *text,
+                                    int delta, int size)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_t *label;
+
+    lv_obj_set_size(btn, size, size);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_COLOR), 0);
+    lv_obj_set_style_radius(btn, size / 2, 0);
+    lv_obj_add_event_cb(btn, rounds_button_event, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)delta);
+
+    label = lv_label_create(btn);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, size >= 34 ? g_font_body : g_font_hint, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(UI_TEXT_COLOR), 0);
+    lv_obj_center(label);
+    return btn;
+}
+
+/* 一排「− 轮数：10 +」；和音量排同款交互（2026-11-01 用户要求）。 */
+static void build_rounds_row(lv_obj_t *parent, int compact)
+{
+    int size = compact ? 28 : 34;
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_t *minus;
+    lv_obj_t *plus;
+
+    lv_obj_set_size(row, compact ? 150 : 190, compact ? 32 : 40);
+    lv_obj_align(row, LV_ALIGN_TOP_LEFT, compact ? 4 : 12, compact ? 6 : 12);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    minus = make_rounds_button(row, "-", -1, size);
+    plus  = make_rounds_button(row, "+", +1, size);
+
+    g_idle_rounds = make_label(row, "轮数：10", g_font_hint, UI_TEXT_COLOR,
+                               LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(minus, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_align(plus, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
 /* ---------- 触摸音量控件（2026-10-19）---------- */
@@ -234,6 +290,9 @@ static void build_idle_page(void)
 
     /* 触摸音量：待机页就能调好，面试中页也有一排（见 build_live_page） */
     build_volume_row(g_page_idle, &g_idle_volume, compact);
+
+    /* 左上角「− 轮数：10 +」：演示 5~6 轮 / 正式数十轮（2026-11-01）。 */
+    build_rounds_row(g_page_idle, compact);
 
     /* 右上角「Wi-Fi」：随时重开配网页（密码写错、换热点时不用清 /data）。
      * 用 hint 字号 —— body(28) 塞进这个小按钮会顶边。 */
@@ -372,6 +431,18 @@ static void build_wifi_page(void)
     btn_skip = make_text_button(g_page_wifi, "跳过", wifi_skip_event,
                                 compact ? 100 : 140, compact ? 40 : 52,
                                 g_font_body);
+
+    /* 左上角返回（2026-10-31 用户反馈：之前只有"跳过"，不明显，回待机很别扭）。
+     * 和"跳过"同一个动作：收起配网页、回到待机；不删除已保存的凭据。 */
+    {
+        lv_obj_t *btn_back = make_text_button(g_page_wifi, "返回",
+                                              wifi_skip_event,
+                                              compact ? 76 : 96,
+                                              compact ? 32 : 40,
+                                              g_font_hint);
+        lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT,
+                     compact ? 8 : 12, compact ? 8 : 12);
+    }
     lv_obj_align(btn_connect, LV_ALIGN_TOP_MID, compact ? -80 : -110,
                  compact ? 185 : (int)(h * 0.40));
     lv_obj_align(btn_skip, LV_ALIGN_TOP_MID, compact ? 80 : 110,
@@ -587,6 +658,20 @@ void interview_ui_set_volume(int percent)
     if (g_live_volume != NULL) {
         lv_label_set_text_fmt(g_live_volume, "音量 %d%%", percent);
     }
+}
+
+void interview_ui_set_rounds_cb(ui_rounds_cb_t cb)
+{
+    g_rounds_cb = cb;
+}
+
+void interview_ui_set_rounds(int rounds)
+{
+    if (!g_ready || g_idle_rounds == NULL) {
+        return;
+    }
+    /* g_idle_rounds 现在就是那一排里的 label（不是按钮了）。 */
+    lv_label_set_text_fmt(g_idle_rounds, "轮数：%d", rounds);
 }
 
 void interview_ui_set_pressure(const char *pressure)

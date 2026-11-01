@@ -14,7 +14,11 @@
   板子坐在 6mm 铜柱上：Z 9→10.6；屏幕顶面 Z≈24.6；外壳口沿 Z=26；面框 26→29。
 
 依赖：trimesh + manifold3d（pip install trimesh manifold3d）
-输出：case_bottom.stl / case_top.stl（嘉立创 3D 打印可直接上传）
+输出（2026-11-01 起）：
+  case_bottom.stl          兜底件（默认打印）：铜柱孔 ×1.5、底边四口合成一条横槽、
+                           按钮侧整面去掉
+  case_bottom_precise.stl  精确件（对照用）：孔距/按键高度修正，保留四个独立口
+  ⚠️ 顶盖 case_top.stl 按用户要求暂时不再生成（build_top 函数保留备用）。
 """
 import sys
 
@@ -41,6 +45,8 @@ SCREEN_TOP_Z = 14.0     # 板面到屏幕顶面的高度差（实测）
 # 竖直基准（全部从壳底面 Z=0 起算 —— 旧版开孔漏加了 FLOOR，整体偏低 3mm）
 Z_BOARD_BOT = FLOOR + PIN_PROT          # 板背面（焊针落在底板上）
 Z_BOARD_TOP = Z_BOARD_BOT + BOARD_T     # 板面
+# 2026-11-01：用户反馈按钮孔在壳上高 1mm，往下调 1mm（原 Z_BOARD_TOP + 1.0）。
+KEY_Z_CENTER = Z_BOARD_TOP + 0.0        # 按键孔心高度
 Z_USBC = FLOOR + 5.0                    # USB-C 口心：最低凸起 +5mm（实测）
 RIM_Z = Z_BOARD_TOP + SCREEN_TOP_Z + 1.4   # 口沿 ≈ 24.2
 TOP_T = 3.0             # 面框厚
@@ -52,11 +58,15 @@ SKIRT_T = 2.2           # 裙边厚
 #    且整组孔离 USB-C 侧远了 1mm（板上 4mm / 壳上 5mm）。三项一起修：
 #    ① 孔距按收缩率反补偿；② 整组往 USB-C 侧（+Y）移 1mm；③ 孔径放大到 φ4.2
 #    （铜柱插口实测 φ3，旧 φ3.4 只剩 0.2mm 余量，一有误差就顶死）。
-STD_DX = 80.5           # 79 × (79/77.5) —— 收缩补偿
-STD_DY = 49.0           # 48.5 × (48.5/48) —— 收缩补偿
+# 2026-11-01 第四轮（用户实测：壳上孔距仍大约 1mm）：
+#   孔距在上一轮补偿值上统一再减 1mm。兜底件同时把孔径放大到 1.5 倍，
+#   给铜柱更大的容差 —— 这是最后一次调整，容错优先。
+STD_DX = 79.5           # 80.5 - 1.0（用户实测孔距大了约 1mm）
+STD_DY = 48.0           # 49.0 - 1.0（同上）
 STD_X0 = 2.4            # 左柱中心距 PCB 左缘
 STD_Y0 = 21.1           # 下排锚定：板上 69.1 + 1.0（往 USB-C 侧）；上排 = 70.1-49 = 21.1
-STD_HOLE = 4.2          # φ3 铜柱 + 单边 0.6mm 余量
+STD_HOLE_PRECISE = 4.2  # 精确版：φ3 铜柱 + 单边 0.6mm 余量
+STD_HOLE = 6.3          # 兜底版：4.2 × 1.5（用户要求扩大 1.5 倍）
 
 # 屏幕（面板外形）
 SCR_LEN = 56.0          # 实测
@@ -117,17 +127,28 @@ def to_mesh(m):
 
 
 # ---------------------------------------------------------------- 底壳
-def build_bottom():
+def build_bottom(fallback=False):
+    """底壳。
+
+    2026-11-01 兜底件（fallback=True）：
+      * 铜柱孔径 ×1.5（4.2 → 6.3）；
+      * 底边四个口（USB-C×2 / TF / LCD&TP）合成**一条横槽**：
+        高度 ×1.5（4.5 → 6.75），左右各外扩 2mm；
+      * **按钮侧（X=OUT_W 的右壁）整面去掉**（保留底板 2.5mm 边沿）——
+        按钮/ USB-A 直接露出，避免最后一版再对不上；
+      * 不生成面框（顶盖）。
+    """
     solid = box(0, 0, 0, OUT_W, OUT_L, RIM_Z)
     cavity = box(WALL, WALL, FLOOR, WALL + IN_W, WALL + IN_L, RIM_Z + 1)
     m = solid - cavity
 
-    # 底板：4 个铜柱安装孔
+    # 底板：4 个铜柱安装孔。兜底件放大孔径，精确件保持 4.2。
+    hole_d = STD_HOLE if fallback else STD_HOLE_PRECISE
     for ix in (0, 1):
         for iy in (0, 1):
             cx = WALL + CLEAR + PROT_LEFT + STD_X0 + ix * STD_DX
             cy = WALL + CLEAR + STD_Y0 + iy * STD_DY
-            m = m - cyl(cx, cy, -1, FLOOR + 1, STD_HOLE)
+            m = m - cyl(cx, cy, -1, FLOOR + 1, hole_d)
 
     bx = WALL + CLEAR + PROT_LEFT   # PCB 左缘 X（腔体左内壁基准 + 端子凸起）
     by = WALL + CLEAR               # PCB 上缘 Y
@@ -136,33 +157,51 @@ def build_bottom():
     # 左壁（X=0 侧，端子侧）：端子组开口（两端各放 TERM_MARGIN）
     m = m - box(-1, by + TERM_Y0 - TERM_MARGIN, Z_BOARD_TOP - 0.5,
                 WALL + 1, by + TERM_Y1 + TERM_MARGIN, Z_BOARD_TOP + TERM_H + 0.5)
-    # 右壁（X=OUT_W 侧）：USB-A + K1/K2/K3（位置实测"距 PCB 下缘"→ 换算到上缘基准）
-    usba_y = by + PCB_L - USBA_Y_FROM_BOT
-    m = m - box(OUT_W - WALL - 1, usba_y - USBA_W / 2, Z_BOARD_TOP - 0.5,
-                OUT_W + 1, usba_y + USBA_W / 2, Z_BOARD_TOP + USBA_H)
-    for d in KEY_YS_FROM_BOT:
-        ky = by + PCB_L - d
-        m = m - cyl_x(OUT_W - WALL / 2, ky, Z_BOARD_TOP + 1.0, WALL + 2, KEY_D)
-    # 底边（Y=OUT_L 侧）：两个 USB-C + TF + LCD&TP
+
+    if fallback:
+        # 兜底：按钮侧整面去掉（只保留底板边沿，见函数注释）
+        m = m - box(OUT_W - WALL, -1, FLOOR,
+                    OUT_W + 1, OUT_L + 1, RIM_Z + 1)
+    else:
+        # 精确版右壁（X=OUT_W 侧）：USB-A + K1/K2/K3
+        # 位置实测"距 PCB 下缘"→ 换算到上缘基准；按键孔心按用户反馈下调 1mm
+        usba_y = by + PCB_L - USBA_Y_FROM_BOT
+        m = m - box(OUT_W - WALL - 1, usba_y - USBA_W / 2, Z_BOARD_TOP - 0.5,
+                    OUT_W + 1, usba_y + USBA_W / 2, Z_BOARD_TOP + USBA_H)
+        for d in KEY_YS_FROM_BOT:
+            ky = by + PCB_L - d
+            m = m - cyl_x(OUT_W - WALL / 2, ky, KEY_Z_CENTER, WALL + 2, KEY_D)
+
+    # 底边（Y=OUT_L 侧）：USB-C×2 + TF + LCD&TP
     #   X 参考 = 端子插口凸起端（腔体左内壁 + CLEAR），与用户实测基准一致
     x0 = WALL + CLEAR
-    port_z0, port_z1 = Z_USBC - 2.25, Z_USBC + 2.25   # 口心 ±2.25（含余量）
-    for x_left in (USBC1_X0, USBC2_X0):
-        m = m - box(x0 + x_left, OUT_L - WALL - 1, port_z0,
-                    x0 + x_left + USBC_W, OUT_L + 1, port_z1)
-    m = m - box(x0 + TF_X0, OUT_L - WALL - 1, port_z0,
-                x0 + TF_X0 + TF_W, OUT_L + 1, port_z1)
-    m = m - box(x0 + LCD_X0, OUT_L - WALL - 1, port_z0,
-                x0 + LCD_X0 + LCD_W, OUT_L + 1, port_z1)
+    if fallback:
+        # 四个口合成一条横槽：左右各外扩 2mm，高度 ×1.5（4.5 → 6.75）
+        slot_x0 = x0 + USBC1_X0 - 2.0
+        slot_x1 = x0 + LCD_X0 + LCD_W + 2.0
+        slot_half = 2.25 * 1.5
+        m = m - box(slot_x0, OUT_L - WALL - 1, Z_USBC - slot_half,
+                    slot_x1, OUT_L + 1, Z_USBC + slot_half)
+    else:
+        port_z0, port_z1 = Z_USBC - 2.25, Z_USBC + 2.25   # 口心 ±2.25（含余量）
+        for x_left in (USBC1_X0, USBC2_X0):
+            m = m - box(x0 + x_left, OUT_L - WALL - 1, port_z0,
+                        x0 + x_left + USBC_W, OUT_L + 1, port_z1)
+        m = m - box(x0 + TF_X0, OUT_L - WALL - 1, port_z0,
+                    x0 + TF_X0 + TF_W, OUT_L + 1, port_z1)
+        m = m - box(x0 + LCD_X0, OUT_L - WALL - 1, port_z0,
+                    x0 + LCD_X0 + LCD_W, OUT_L + 1, port_z1)
     # 后壁（Y=0 侧）：顶部条带完全敞开（排针/按键/喇叭都在板上方露出）
     #   —— 不做开口：条带在内侧，外壳只留口沿，不挡视线。
 
     # 面框固定：两侧各 2 个 M3 自攻孔（孔心 = 口沿下 5mm）
+    # 兜底件不生成面框，但保留左壁的两个孔位不影响使用；
+    # 右壁已整面去掉，对应孔位不再存在。
     zs = RIM_Z - 5.0
     for (yy, xx) in ((by + 8, 0), (by + 8, OUT_W), (by + PCB_L - 8, 0), (by + PCB_L - 8, OUT_W)):
         if xx == 0:
             m = m - cyl_x(WALL / 2, yy, zs, WALL + 2, 2.5)
-        else:
+        elif not fallback:
             m = m - cyl_x(OUT_W - WALL / 2, yy, zs, WALL + 2, 2.5)
     return m
 
@@ -193,20 +232,21 @@ def build_top():
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "."
-    b = to_mesh(build_bottom())
-    t = to_mesh(build_top())
-    # 备用变体：USB 双层叠口（改常量后重出）
-    global USBA_H
-    saved, USBA_H = USBA_H, 13.5
-    b_dual = to_mesh(build_bottom())
-    USBA_H = saved
-    for name, mesh in (("case_bottom.stl", b), ("case_top.stl", t),
-                       ("case_bottom_usb_dual.stl", b_dual)):
+
+    # 2026-11-01：最后一次调整。默认输出**兜底件**（容错优先）；
+    # 同时保留精确件供对照。顶盖（case_top.stl）按用户要求暂时不再生成。
+    variants = (
+        ("case_bottom.stl", build_bottom(fallback=True)),
+        ("case_bottom_precise.stl", build_bottom(fallback=False)),
+    )
+    for name, solid in variants:
+        mesh = to_mesh(solid)
         p = f"{out}/{name}"
         mesh.export(p)
         print(f"{p}: {len(mesh.faces)} 面, 体积 {mesh.volume/1000:.1f} cm3, "
               f"包围盒 {np.round(mesh.bounds[1]-mesh.bounds[0],1)}")
-    print(f"外壳外廓: {OUT_W:.1f} × {OUT_L:.1f} × {RIM_Z+TOP_T:.1f} mm")
+    print(f"外壳外廓: {OUT_W:.1f} × {OUT_L:.1f} × {RIM_Z:.1f} mm"
+          f"（不含面框；兜底件右壁敞开）")
 
 
 if __name__ == "__main__":

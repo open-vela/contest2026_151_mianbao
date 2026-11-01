@@ -2,7 +2,7 @@
  {
   "question": "什么是 AI Agent",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -12,7 +12,7 @@
  {
   "question": "Agent vs LLM Chain vs ChatBot",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -22,7 +22,7 @@
  {
   "question": "Agent 的核心组成",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -32,7 +32,7 @@
  {
   "question": "Agent 的工作流程",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -42,7 +42,7 @@
  {
   "question": "Agent 的分类",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -52,7 +52,7 @@
  {
   "question": "Agent 的应用场景",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -62,7 +62,7 @@
  {
   "question": "Agent 的挑战与局限",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -72,7 +72,7 @@
  {
   "question": "请用你自己的话定义 LLM Agent，并说明与单次调用的差异。",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -82,7 +82,7 @@
  {
   "question": "ReAct 框架里三个字母代表什么？解决什么问题？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -92,7 +92,7 @@
  {
   "question": "你会如何设计 Agent 的停止条件？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -102,7 +102,7 @@
  {
   "question": "工具描述（tool description）为什么非常重要？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -112,7 +112,7 @@
  {
   "question": "Memory 用向量库就够了吗？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -122,7 +122,7 @@
  {
   "question": "多 Agent 协作和单 Agent 多工具怎么选？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -132,7 +132,7 @@
  {
   "question": "如何做「人在回路」又不打断体验？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -142,7 +142,7 @@
  {
   "question": "Agent 日志应记录什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -152,7 +152,7 @@
  {
   "question": "为什么「让模型自己选工具」可能不如「路由器 + 规则」？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -162,7 +162,7 @@
  {
   "question": "简述 Planner Executor 架构及优缺点。",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -172,7 +172,7 @@
  {
   "question": "Agent 如何做版本管理与灰度？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -182,7 +182,7 @@
  {
   "question": "举一个「不是 Agent 但常被误认为 Agent」的例子。",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -192,7 +192,7 @@
  {
   "question": "你如何向非技术经理解释 Agent 的风险？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -202,7 +202,7 @@
  {
   "question": "上下文窗口越来越大，还需要外部记忆吗？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -212,7 +212,7 @@
  {
   "question": "如何测试 Agent？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -222,7 +222,7 @@
  {
   "question": "ReAct 框架（重点中的重点）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -232,7 +232,7 @@
  {
   "question": "Plan and Execute 框架",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -242,7 +242,7 @@
  {
   "question": "Reflexion 框架",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -252,7 +252,7 @@
  {
   "question": "LATS（Language Agent Tree Search）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -262,7 +262,7 @@
  {
   "question": "LangChain Agent 实现",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -272,7 +272,7 @@
  {
   "question": "LangGraph 状态机",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -282,7 +282,7 @@
  {
   "question": "AutoGen / CrewAI 等多 Agent 框架",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -292,7 +292,7 @@
  {
   "question": "模块综合：15+ 道高频面试题速查",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -302,7 +302,7 @@
  {
   "question": "文档解析与预处理",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -312,7 +312,7 @@
  {
   "question": "文档分块策略（Chunking）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -322,7 +322,7 @@
  {
   "question": "向量化（Embedding）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -332,7 +332,7 @@
  {
   "question": "重排序（Reranking）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -342,7 +342,7 @@
  {
   "question": "RAG 高级模式",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -352,7 +352,7 @@
  {
   "question": "RAG 生产优化",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -362,7 +362,7 @@
  {
   "question": "Function Calling 基础",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -372,7 +372,7 @@
  {
   "question": "Tool Use / Tool Calling",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -382,7 +382,7 @@
  {
   "question": "MCP 协议（Model Context Protocol）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -392,7 +392,7 @@
  {
   "question": "工具路由（Tool Routing）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -402,7 +402,7 @@
  {
   "question": "工具编排（Tool Orchestration）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -412,7 +412,7 @@
  {
   "question": "常见工具实现",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -422,7 +422,7 @@
  {
   "question": "综合面试题精选（≥15 题）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -432,7 +432,7 @@
  {
   "question": "Function Calling 和「让模型输出 JSON」有什么本质区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -442,7 +442,7 @@
  {
   "question": "描述 OpenAI 兼容接口里 tool_calls 与 tool 消息的对应关系。",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -452,7 +452,7 @@
  {
   "question": "为什么工具 description 比函数名更重要？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -462,7 +462,7 @@
  {
   "question": "如何设计 JSON Schema 降低模型填错概率？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -472,7 +472,7 @@
  {
   "question": "LangChain Tool 的 docstring 为什么要写「何时不要用」？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -482,7 +482,7 @@
  {
   "question": "MCP 解决的主要痛点是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -492,7 +492,7 @@
  {
   "question": "MCP 与 Function Calling 是替代关系吗？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -502,7 +502,7 @@
  {
   "question": "工具路由什么时候必须上？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -512,7 +512,7 @@
  {
   "question": "向量路由的缺陷与改进？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -522,7 +522,7 @@
  {
   "question": "并行工具调用要注意什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -532,7 +532,7 @@
  {
   "question": "什么是工具编排中的「依赖 DAG」？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -542,7 +542,7 @@
  {
   "question": "敏感操作为什么推荐「两阶段提交」式工具设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -552,7 +552,7 @@
  {
   "question": "工具返回为什么要尽量结构化（JSON）？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -562,7 +562,7 @@
  {
   "question": "如何做工具调用的权限控制？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -572,7 +572,7 @@
  {
   "question": "代码执行工具如何做到基本安全？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -582,7 +582,7 @@
  {
   "question": "记忆系统概述",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -592,7 +592,7 @@
  {
   "question": "短期记忆（Short term / Working Memory）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -602,7 +602,7 @@
  {
   "question": "长期记忆（Long term Memory）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -612,7 +612,7 @@
  {
   "question": "会话摘要与压缩",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -622,7 +622,7 @@
  {
   "question": "情景记忆与语义记忆",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -632,7 +632,7 @@
  {
   "question": "记忆检索策略",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -642,7 +642,7 @@
  {
   "question": "高级记忆框架",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -652,7 +652,7 @@
  {
   "question": "记忆在生产中的挑战",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -662,7 +662,7 @@
  {
   "question": "为什么需要多智能体",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -672,7 +672,7 @@
  {
   "question": "三大协作模式",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -682,7 +682,7 @@
  {
   "question": "任务分配策略",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -692,7 +692,7 @@
  {
   "question": "状态管理与同步",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -702,7 +702,7 @@
  {
   "question": "主流多 Agent 框架",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -712,7 +712,7 @@
  {
   "question": "多 Agent 在企业中的应用",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -722,7 +722,7 @@
  {
   "question": "Transformer 架构",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -732,7 +732,7 @@
  {
   "question": "注意力机制详解",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -742,7 +742,7 @@
  {
   "question": "Tokenization",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -752,7 +752,7 @@
  {
   "question": "前沿模型与选型",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -762,7 +762,7 @@
  {
   "question": "模型路由与容错",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -772,7 +772,7 @@
  {
   "question": "Token 成本控制",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -782,7 +782,7 @@
  {
   "question": "全链路可观测性",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -792,7 +792,7 @@
  {
   "question": "幻觉问题的工程解决方案",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -802,7 +802,7 @@
  {
   "question": "Prompt Engineering 基础",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -812,7 +812,7 @@
  {
   "question": "Prompt 设计原则",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -822,7 +822,7 @@
  {
   "question": "Few shot Learning",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -832,7 +832,7 @@
  {
   "question": "Chain of Thought（CoT）思维链",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -842,7 +842,7 @@
  {
   "question": "自我反思 Prompt",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -852,7 +852,7 @@
  {
   "question": "System Prompt 设计",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -862,7 +862,7 @@
  {
   "question": "Prompt 注入与防御",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -872,7 +872,7 @@
  {
   "question": "Prompt 优化技巧",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -882,7 +882,7 @@
  {
   "question": "Agent 中的核心 Prompt 模板",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试八股文",
   "level": "",
   "stage": "",
@@ -892,7 +892,7 @@
  {
   "question": "为什么选择 ReAct 模式而不是 Plan and Execute？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -902,7 +902,7 @@
  {
   "question": "为什么采用多路检索而不是单一向量检索？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -912,7 +912,7 @@
  {
   "question": "Agent 编排器是怎么设计的？为什么这样设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -922,7 +922,7 @@
  {
   "question": "多 Agent 协作和单 Agent 有什么区别？你怎么选择？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -932,7 +932,7 @@
  {
   "question": "意图识别模块是怎么实现的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -942,7 +942,7 @@
  {
   "question": "为什么选择 Milvus 而不是其他向量数据库？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -952,7 +952,7 @@
  {
   "question": "系统的可扩展性是怎么设计的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -962,7 +962,7 @@
  {
   "question": "如果让你重新设计这个系统，你会怎么改进？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -972,7 +972,7 @@
  {
   "question": "你的系统能支持多少并发？怎么评估的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -982,7 +982,7 @@
  {
   "question": "为什么要做模型路由？直接用一个模型不行吗？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -992,7 +992,7 @@
  {
   "question": "怎么设计的对话管理和上下文维护？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1002,7 +1002,7 @@
  {
   "question": "你的系统支持哪些模型？怎么做模型适配的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1012,7 +1012,7 @@
  {
   "question": "如何处理长文档输入？上下文窗口不够怎么办？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1022,7 +1022,7 @@
  {
   "question": "系统的安全架构是怎么设计的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1032,7 +1032,7 @@
  {
   "question": "你怎么看待 MCP（Model Context Protocol）？在你的系统中是怎么使用的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1042,7 +1042,7 @@
  {
   "question": "如何设计 Agent 的错误恢复和重试机制？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1052,7 +1052,7 @@
  {
   "question": "你的系统支持多租户吗？怎么实现的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1062,7 +1062,7 @@
  {
   "question": "你怎么看 Agent 架构的未来发展？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1072,7 +1072,7 @@
  {
   "question": "向量数据库是怎么选型的？分块策略是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1082,7 +1082,7 @@
  {
   "question": "ReAct 的 Prompt 是怎么设计的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1092,7 +1092,7 @@
  {
   "question": "熔断器是怎么实现的？三个状态是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1102,7 +1102,7 @@
  {
   "question": "记忆系统的短期和长期记忆是怎么配合的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1112,7 +1112,7 @@
  {
   "question": "文档解析支持哪些格式？怎么处理表格和图片？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1122,7 +1122,7 @@
  {
   "question": "重排序是怎么做的？用的什么模型？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1132,7 +1132,7 @@
  {
   "question": "Function Calling 和 MCP 有什么区别？你怎么选的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1142,7 +1142,7 @@
  {
   "question": "会话摘要压缩的阈值是多少？怎么确定的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1152,7 +1152,7 @@
  {
   "question": "RRF 融合排序的公式是什么？权重怎么调？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1162,7 +1162,7 @@
  {
   "question": "嵌入模型用的什么？维度多少？怎么选的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1172,7 +1172,7 @@
  {
   "question": "Guardrails（护栏）是怎么实现的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1182,7 +1182,7 @@
  {
   "question": "怎么实现的 Streaming 流式输出？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1192,7 +1192,7 @@
  {
   "question": "怎么做的日志和链路追踪？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1202,7 +1202,7 @@
  {
   "question": "怎么做的异步并行处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1212,7 +1212,7 @@
  {
   "question": "知识图谱是怎么构建和使用的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1222,7 +1222,7 @@
  {
   "question": "怎么做的 A/B 测试和 Prompt 版本管理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1232,7 +1232,7 @@
  {
   "question": "Token 计数和费用统计是怎么实现的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1242,7 +1242,7 @@
  {
   "question": "怎么做的数据预处理和数据清洗？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1252,7 +1252,7 @@
  {
   "question": "Token 成本是怎么控制的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1262,7 +1262,7 @@
  {
   "question": "延迟优化做了哪些措施？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1272,7 +1272,7 @@
  {
   "question": "缓存策略是什么？命中率多少？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1282,7 +1282,7 @@
  {
   "question": "流式输出是怎么实现的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1292,7 +1292,7 @@
  {
   "question": "异步处理在哪些地方使用了？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1302,7 +1302,7 @@
  {
   "question": "数据库查询是怎么优化的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1312,7 +1312,7 @@
  {
   "question": "模型推理速度是怎么优化的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1322,7 +1322,7 @@
  {
   "question": "前端渲染性能怎么优化？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1332,7 +1332,7 @@
  {
   "question": "冷启动问题是怎么解决的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1342,7 +1342,7 @@
  {
   "question": "网络传输是怎么优化的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1352,7 +1352,7 @@
  {
   "question": "Embedding 计算是怎么优化的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1362,7 +1362,7 @@
  {
   "question": "怎么做的资源监控和自动扩缩容？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1372,7 +1372,7 @@
  {
   "question": "Agent 死循环怎么检测和防止的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1382,7 +1382,7 @@
  {
   "question": "模型幻觉怎么控制的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1392,7 +1392,7 @@
  {
   "question": "模型超时怎么处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1402,7 +1402,7 @@
  {
   "question": "检索结果不准确怎么办？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1412,7 +1412,7 @@
  {
   "question": "工具调用失败怎么处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1422,7 +1422,7 @@
  {
   "question": "多 Agent 之间通信失败怎么处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1432,7 +1432,7 @@
  {
   "question": "知识库数据不一致怎么处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1442,7 +1442,7 @@
  {
   "question": "高并发下的限流降级策略是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1452,7 +1452,7 @@
  {
   "question": "数据丢失和恢复策略是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1462,7 +1462,7 @@
  {
   "question": "模型输出格式异常怎么处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1472,7 +1472,7 @@
  {
   "question": "敏感信息泄露怎么防止？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1482,7 +1482,7 @@
  {
   "question": "系统容量规划是怎么做的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1492,7 +1492,7 @@
  {
   "question": "怎么做的测试？覆盖率多少？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1502,7 +1502,7 @@
  {
   "question": "怎么做的监控和告警？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1512,7 +1512,7 @@
  {
   "question": "怎么部署的？CI/CD 是什么流程？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1522,7 +1522,7 @@
  {
   "question": "日志系统怎么设计的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1532,7 +1532,7 @@
  {
   "question": "安全性怎么保证的？（Prompt 注入等）",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1542,7 +1542,7 @@
  {
   "question": "代码质量是怎么保证的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1552,7 +1552,7 @@
  {
   "question": "文档是怎么维护的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1562,7 +1562,7 @@
  {
   "question": "怎么做的版本管理和发布管理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1572,7 +1572,7 @@
  {
   "question": "怎么做技术债务管理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1582,7 +1582,7 @@
  {
   "question": "如何做的性能基准测试？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1592,7 +1592,7 @@
  {
   "question": "怎么做的配置管理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1602,7 +1602,7 @@
  {
   "question": "团队协作和知识共享是怎么做的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1612,7 +1612,7 @@
  {
   "question": "你的系统解决了什么业务问题？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1622,7 +1622,7 @@
  {
   "question": "用户反馈怎么样？怎么收集和处理的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1632,7 +1632,7 @@
  {
   "question": "你觉得 AI Agent 在企业中的价值是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1642,7 +1642,7 @@
  {
   "question": "和竞品相比你们的优势是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1652,7 +1652,7 @@
  {
   "question": "下一步的技术规划是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1662,7 +1662,7 @@
  {
   "question": "你在项目中的角色是什么？最大的贡献是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1672,7 +1672,7 @@
  {
   "question": "项目中遇到的最大挑战是什么？怎么解决的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1682,7 +1682,7 @@
  {
   "question": "这个项目的 ROI 是怎么计算的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1692,7 +1692,7 @@
  {
   "question": "Transformer 的 Self Attention 怎么计算？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1702,7 +1702,7 @@
  {
   "question": "LoRA 的原理是什么？为什么低秩有效？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1712,7 +1712,7 @@
  {
   "question": "RAG 和微调怎么选？各自优劣？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1722,7 +1722,7 @@
  {
   "question": "KV Cache 是什么？为什么需要？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1732,7 +1732,7 @@
  {
   "question": "RLHF 和 DPO 的区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1742,7 +1742,7 @@
  {
   "question": "Embedding 模型是怎么训练的？对比学习怎么做的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1752,7 +1752,7 @@
  {
   "question": "向量数据库的索引原理是什么？HNSW 怎么工作的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1762,7 +1762,7 @@
  {
   "question": "Prompt Engineering 有哪些关键技巧？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1772,7 +1772,7 @@
  {
   "question": "大模型的 Context Window 限制怎么突破？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1782,7 +1782,7 @@
  {
   "question": "LLM 的解码策略有哪些？Temperature 和 Top p 怎么影响输出？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1792,7 +1792,7 @@
  {
   "question": "什么是 Agent 的工具学习（Tool Learning）？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -1802,7 +1802,7 @@
  {
   "question": "什么是 Mixture of Experts（MoE）？为什么重要？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "面试问答集",
   "level": "",
   "stage": "",
@@ -8412,7 +8412,7 @@
  {
   "question": "什么是 AI Agent？它与普通 LLM 调用有什么区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8422,7 +8422,7 @@
  {
   "question": "请解释 ReAct（Reasoning + Acting）框架的核心思想",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8432,7 +8432,7 @@
  {
   "question": "Agent 的规划（Planning）模块通常有哪些实现方式？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8442,7 +8442,7 @@
  {
   "question": "Agent 的记忆系统分为哪几种？各自的作用是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8452,7 +8452,7 @@
  {
   "question": "什么是工具调用（Tool Calling）？它在 Agent 中的作用是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8462,7 +8462,7 @@
  {
   "question": "Agent 如何进行工具选择？有哪些策略？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8472,7 +8472,7 @@
  {
   "question": "什么是 Reflection（反思机制）？在 Agent 中如何实现？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8482,7 +8482,7 @@
  {
   "question": "如何评测一个 Agent 系统的效果？有哪些常用指标？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8492,7 +8492,7 @@
  {
   "question": "Workflow Agent 和 Autonomous Agent 有什么区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8502,7 +8502,7 @@
  {
   "question": "请解释 Orchestrator Workers 模式",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8512,7 +8512,7 @@
  {
   "question": "Agent 系统中的状态管理有哪些挑战？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8522,7 +8522,7 @@
  {
   "question": "如何保证 Agent 工具调用的可靠性？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8532,7 +8532,7 @@
  {
   "question": "什么是 Agent 的「幻觉」问题？如何缓解？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8542,7 +8542,7 @@
  {
   "question": "Agent 系统中如何处理长任务（Long horizon Tasks）？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8552,7 +8552,7 @@
  {
   "question": "请对比 Agent 框架的几种主流架构模式",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Agent 基础（Q1-Q15）",
   "level": "",
   "stage": "",
@@ -8562,7 +8562,7 @@
  {
   "question": "Nanobot 是什么？它在 Agent 框架生态中的定位是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8572,7 +8572,7 @@
  {
   "question": "请详细描述 Nanobot AgentLoop 的运行流程",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8582,7 +8582,7 @@
  {
   "question": "ContextBuilder 在 Nanobot 中的作用是什么？它如何管理上下文？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8592,7 +8592,7 @@
  {
   "question": "MemoryConsolidator 的压缩策略是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8602,7 +8602,7 @@
  {
   "question": "ToolRegistry 的设计和工作原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8612,7 +8612,7 @@
  {
   "question": "SubagentManager 如何防止递归爆炸？为什么设置 15 次迭代限制？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8622,7 +8622,7 @@
  {
   "question": "MessageBus 的双队列设计是什么？解决了什么问题？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8632,7 +8632,7 @@
  {
   "question": "Nanobot 的 Skills 渐进披露（Progressive Disclosure）机制是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8642,7 +8642,7 @@
  {
   "question": "Nanobot 如何集成 MCP 协议？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8652,7 +8652,7 @@
  {
   "question": "_TOOL_RESULT_MAX_CHARS = 16000 这个常量的设计考量是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8662,7 +8662,7 @@
  {
   "question": "Nanobot 的 session_locks 并发控制机制是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8672,7 +8672,7 @@
  {
   "question": "_concurrency_gate(3) 的作用和设计原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8682,7 +8682,7 @@
  {
   "question": "save_memory 虚拟工具的设计巧妙在哪里？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8692,7 +8692,7 @@
  {
   "question": "Nanobot 的 Channel 适配器模式是如何设计的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8702,7 +8702,7 @@
  {
   "question": "Nanobot 的「配置驱动组装」理念是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8712,7 +8712,7 @@
  {
   "question": "Nanobot 如何利用 Prompt Cache 优化成本？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8722,7 +8722,7 @@
  {
   "question": "请对比 Nanobot 与 LangChain 的核心区别",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8732,7 +8732,7 @@
  {
   "question": "请对比 Nanobot 与 OpenClaw（开源 Agent 框架）的差异",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8742,7 +8742,7 @@
  {
   "question": "基于 Nanobot 学习，简历上可以写哪些项目？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8752,7 +8752,7 @@
  {
   "question": "Nanobot 的 4000 行代码中，哪些设计模式值得学习？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 专项（Q16-Q35）",
   "level": "",
   "stage": "",
@@ -8762,7 +8762,7 @@
  {
   "question": "什么是 MCP（Model Context Protocol）协议？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8772,7 +8772,7 @@
  {
   "question": "MCP 的 Host、Client、Server 三角架构是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8782,7 +8782,7 @@
  {
   "question": "MCP 与 Function Calling 有什么区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8792,7 +8792,7 @@
  {
   "question": "MCP 的三大原语（Primitives）是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8802,7 +8802,7 @@
  {
   "question": "Skill、Function Calling、MCP Tool 三者有什么关系和区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8812,7 +8812,7 @@
  {
   "question": "MCP 的工具发现机制是怎样的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8822,7 +8822,7 @@
  {
   "question": "MCP 的传输层有哪些选项？各自适用什么场景？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8832,7 +8832,7 @@
  {
   "question": "MCP 协议的安全考虑有哪些？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8842,7 +8842,7 @@
  {
   "question": "什么是 MCP UI？它解决什么问题？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8852,7 +8852,7 @@
  {
   "question": "MCP 使用的 JSON RPC 2.0 协议有什么特点？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8862,7 +8862,7 @@
  {
   "question": "MCP 如何实现 M×N 到 M+N 的生态效应？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8872,7 +8872,7 @@
  {
   "question": "MCP 生态的时间线和里程碑事件？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8882,7 +8882,7 @@
  {
   "question": "企业中部署 MCP 的核心价值是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8892,7 +8892,7 @@
  {
   "question": "自建 MCP Server 需要注意哪些要点？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8902,7 +8902,7 @@
  {
   "question": "MCP 的 Sampling 功能是什么？为什么重要？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "MCP 协议（Q36-Q50）",
   "level": "",
   "stage": "",
@@ -8912,7 +8912,7 @@
  {
   "question": "请描述 Transformer 架构的核心组成部分",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8922,7 +8922,7 @@
  {
   "question": "请推导 Self Attention 的计算公式",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8932,7 +8932,7 @@
  {
   "question": "Multi Head Attention 的原理和优势是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8942,7 +8942,7 @@
  {
   "question": "位置编码有哪些方案？RoPE 的原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8952,7 +8952,7 @@
  {
   "question": "KV Cache 是什么？它如何加速推理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8962,7 +8962,7 @@
  {
   "question": "什么是「Lost in the Middle」问题？如何缓解？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8972,7 +8972,7 @@
  {
   "question": "Pre LN 和 Post LN 的区别是什么？为什么现代 LLM 偏好 Pre LN？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8982,7 +8982,7 @@
  {
   "question": "RMSNorm 是什么？相比 LayerNorm 有什么优势？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -8992,7 +8992,7 @@
  {
   "question": "上下文长度扩展技术（NTK、YaRN）的原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9002,7 +9002,7 @@
  {
   "question": "MoE（Mixture of Experts）与 Dense 模型的区别和权衡是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9012,7 +9012,7 @@
  {
   "question": "大模型幻觉（Hallucination）的来源和缓解策略",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9022,7 +9022,7 @@
  {
   "question": "温度（Temperature）和 Top p 参数的作用是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9032,7 +9032,7 @@
  {
   "question": "Decoder only 和 Encoder Decoder 架构各自适合什么任务？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9042,7 +9042,7 @@
  {
   "question": "Scaling Laws 的核心结论是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9052,7 +9052,7 @@
  {
   "question": "Flash Attention 的核心优化原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9062,7 +9062,7 @@
  {
   "question": "GQA、MHA、MQA 三者有什么区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9072,7 +9072,7 @@
  {
   "question": "SwiGLU 激活函数的原理和优势是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9082,7 +9082,7 @@
  {
   "question": "Embedding 层的设计有哪些考虑？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9092,7 +9092,7 @@
  {
   "question": "常见的文本生成策略有哪些？各自的优缺点？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9102,7 +9102,7 @@
  {
   "question": "大模型推理优化有哪些主要方向？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "大模型基础（Q51-Q70）",
   "level": "",
   "stage": "",
@@ -9112,7 +9112,7 @@
  {
   "question": "大模型预训练（Pretrain）的核心目标和方法是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9122,7 +9122,7 @@
  {
   "question": "SFT（Supervised Fine Tuning）的目的和数据格式是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9132,7 +9132,7 @@
  {
   "question": "RLHF 的三个阶段分别是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9142,7 +9142,7 @@
  {
   "question": "RLHF 中的 KL 约束有什么作用？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9152,7 +9152,7 @@
  {
   "question": "PPO 算法中的四个网络分别是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9162,7 +9162,7 @@
  {
   "question": "DPO（Direct Preference Optimization）的核心创新是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9172,7 +9172,7 @@
  {
   "question": "DPO 和 PPO 如何选型？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9182,7 +9182,7 @@
  {
   "question": "什么是奖励破解（Reward Hacking）？如何防范？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9192,7 +9192,7 @@
  {
   "question": "LoRA 的数学原理是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9202,7 +9202,7 @@
  {
   "question": "为什么 LoRA 在实践中效果很好？直觉解释是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9212,7 +9212,7 @@
  {
   "question": "LoRA 推理时如何合并？有什么好处？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9222,7 +9222,7 @@
  {
   "question": "QLoRA 的核心创新是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9232,7 +9232,7 @@
  {
   "question": "LoRA 的超参数 r 和 α 如何选择？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9242,7 +9242,7 @@
  {
   "question": "什么情况下应该选择全量微调而非 LoRA？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9252,7 +9252,7 @@
  {
   "question": "知识蒸馏的黑盒和白盒方法有什么区别？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "训练优化（Q71-Q85）",
   "level": "",
   "stage": "",
@@ -9262,7 +9262,7 @@
  {
   "question": "Nanobot 的 AgentRunner 如何控制迭代次数？为什么主 Agent 是 40 次而子 Agent 是 15 次？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9272,7 +9272,7 @@
  {
   "question": "MemoryConsolidator 的触发条件是什么？合并失败怎么办？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9282,7 +9282,7 @@
  {
   "question": "MCPToolWrapper 如何将 MCP 工具 schema 转换为 OpenAI 格式？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9292,7 +9292,7 @@
  {
   "question": "Nanobot 的并发控制机制是怎样的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9302,7 +9302,7 @@
  {
   "question": "ContextBuilder 如何优化 Prompt Caching？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9312,7 +9312,7 @@
  {
   "question": "Skills 的渐进披露（Progressive Disclosure）机制如何工作？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9322,7 +9322,7 @@
  {
   "question": "Nanobot 如何防止子 Agent 无限递归？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9332,7 +9332,7 @@
  {
   "question": "ChannelManager 的出站消息处理策略？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9342,7 +9342,7 @@
  {
   "question": "_TOOL_RESULT_MAX_CHARS (16000) 设计目的？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9352,7 +9352,7 @@
  {
   "question": "Nanobot 的 Provider 注册机制如何实现？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9362,7 +9362,7 @@
  {
   "question": "save_memory 虚拟工具的设计意义？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9372,7 +9372,7 @@
  {
   "question": "InboundMessage 的 session_key 机制？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9382,7 +9382,7 @@
  {
   "question": "Nanobot 的 exec 工具有哪些安全防护？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9392,7 +9392,7 @@
  {
   "question": "如何评价 Nanobot 用 Markdown 文件（MEMORY.md）做长期记忆的设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9402,7 +9402,7 @@
  {
   "question": "如果让你扩展 Nanobot 支持多用户，需要改造哪些模块？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "Nanobot 源码与设计深度题（Q86-Q100）",
   "level": "",
   "stage": "",
@@ -9412,7 +9412,7 @@
  {
   "question": "RAG 解决了什么问题？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9422,7 +9422,7 @@
  {
   "question": "RAG 的基本流程是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9432,7 +9432,7 @@
  {
   "question": "RAG 和微调如何选择？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9442,7 +9442,7 @@
  {
   "question": "Chunk 分割有哪些策略？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9452,7 +9452,7 @@
  {
   "question": "什么是混合检索（Hybrid Search）？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9462,7 +9462,7 @@
  {
   "question": "Rerank 在 RAG 中的作用和实现方式？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9472,7 +9472,7 @@
  {
   "question": "检索冲突（Retrieved Conflicts）如何处理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9482,7 +9482,7 @@
  {
   "question": "企业 RAG 中如何实现权限隔离？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9492,7 +9492,7 @@
  {
   "question": "Self RAG 是什么？它的创新点在哪里？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9502,7 +9502,7 @@
  {
   "question": "多模态 RAG 有哪些挑战和方案？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "RAG（Q101-Q110）",
   "level": "",
   "stage": "",
@@ -9512,7 +9512,7 @@
  {
   "question": "单 Agent 的瓶颈在哪里？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9522,7 +9522,7 @@
  {
   "question": "多 Agent 协作的核心收益是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "Stage 3: Team Fit & Scenario Handling",
@@ -9532,7 +9532,7 @@
  {
   "question": "中心化 Boss Worker 模式的优缺点是什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9542,7 +9542,7 @@
  {
   "question": "流水线（Pipeline）模式适合什么场景？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9552,7 +9552,7 @@
  {
   "question": "民主/辩论式多 Agent 有什么优势？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9562,7 +9562,7 @@
  {
   "question": "多 Agent 系统的通信冗余如何控制？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9572,7 +9572,7 @@
  {
   "question": "多 Agent 系统如何保证一致性？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9582,7 +9582,7 @@
  {
   "question": "多 Agent 系统的调试有哪些难点和技巧？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "多智能体（Q111-Q118）",
   "level": "",
   "stage": "",
@@ -9592,7 +9592,7 @@
  {
   "question": "请设计一个企业知识库 Agent 系统",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9602,7 +9602,7 @@
  {
   "question": "如何设计 Agent 系统的高可用方案？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9612,7 +9612,7 @@
  {
   "question": "多租户 Agent 系统如何设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9622,7 +9622,7 @@
  {
   "question": "Agent 系统的可观测性如何设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9632,7 +9632,7 @@
  {
   "question": "Agent 系统的成本优化有哪些手段？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9642,7 +9642,7 @@
  {
   "question": "什么是影子测试（Shadow Testing）？在 Agent 系统中如何应用？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9652,7 +9652,7 @@
  {
   "question": "如何进行 Prompt 和工具的版本管理？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9662,7 +9662,7 @@
  {
   "question": "Agent 系统的合规与内容安全如何设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "系统设计（Q119-Q126）",
   "level": "",
   "stage": "",
@@ -9672,7 +9672,7 @@
  {
   "question": "Agent 项目中如何管理 API 密钥和敏感配置？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9682,7 +9682,7 @@
  {
   "question": "Agent 系统中的超时和重试策略如何设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9692,7 +9692,7 @@
  {
   "question": "Agent 输出如何保证结构化（Structured Output）？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9702,7 +9702,7 @@
  {
   "question": "如何对 Agent 进行单元测试？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9712,7 +9712,7 @@
  {
   "question": "Agent 项目的 CI/CD 如何设计？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9722,7 +9722,7 @@
  {
   "question": "Agent 线上事故案例：某次工具调用导致的循环和如何修复",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9732,7 +9732,7 @@
  {
   "question": "代码评审（Code Review）Agent 代码时应关注什么？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",
@@ -9742,7 +9742,7 @@
  {
   "question": "如何文档化一个 Agent 项目？",
   "keywords": [],
-  "role": "AI Agent 开发",
+  "role": "智能体开发",
   "category": "工程实践（Q127-Q134）",
   "level": "",
   "stage": "",

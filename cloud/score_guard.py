@@ -16,16 +16,18 @@
 那个 JSON"，`normalize` 负责"把残缺/越界的字段收拾干净或丢弃"，`is_usable`
 负责"这份评分到底能不能用"。全部是纯函数，可单测（同 `reply_guard` 的纪律）。
 
-维度是**代码里定死的**（`DIMENSIONS`）
---------------------------------------
+维度是**代码里定死的**（`interview_spec.DIMENSIONS`）
+----------------------------------------------------
 单人自练的场景下，固定维度才有意义 —— 不固定就没法纵向比较"上个月这项 6 分，
-这个月 7 分"。这个元组是唯一事实来源：P2 的提示词由它生成，`normalize` 也用它
-校验，因此不存在"提示词里写了 5 个维度、代码只认 4 个"这种漂移。
+这个月 7 分"。唯一事实来源是 `cloud/interview_spec.py`：P2 的提示词由它生成，
+`normalize` 也用它校验，因此不存在"提示词里写了 5 个维度、代码只认 4 个"这种漂移。
 """
 import json
 import re
 
-# 评分维度：唯一事实来源。改这里就等于改提示词（P2 会把它拼进 prompt）。
+import interview_spec
+
+# 评分维度：唯一事实来源在 `interview_spec.py`（2026-11-01 收拢）。
 #
 # ⚠️ 这四项**必须与报告正文那四个维度一致**：
 #   报告是**念给候选人听**的（skills/generate_feedback.json 的"接着四句：依次评价
@@ -36,7 +38,9 @@ import re
 #   评分卡这套（"表达与逻辑/专业深度/项目经验/岗位匹配"，9/29 在 VM 里另起的）、
 #   以及 skills/README.md 里还写着的第三套（"逻辑性/专业度/表达清晰度/岗位匹配度"）。
 #   现在统一到**报告那套**：它已经在提示词里生效、且是三者中唯一有出处的。
-DIMENSIONS = ("技术正确性", "深度与原理", "工程与场景思考", "表达与结构")
+DIMENSIONS = interview_spec.DIMENSION_NAMES
+DIMENSION_WEIGHTS = interview_spec.DIMENSION_WEIGHTS
+weighted_total = interview_spec.weighted_total
 
 # 单维度满分。用 0~10 的整数：模型对 10 分制最稳，而且前端画条形图够用。
 MAX_SCORE = 10
@@ -250,7 +254,9 @@ def normalize(raw):
     return {
         "dimensions": dims,
         "missing": [d for d in DIMENSIONS if d not in seen],
-        "total": round(sum(d["score"] for d in dims) / len(dims) * 10),
+        "total": weighted_total(dims),
+        # 评分口径版本：成长页用它识别"跨版本不可比"（v1 均分 / v2 加权）。
+        "scoring_version": interview_spec.SCORING_VERSION,
         "summary": _clean_str(raw.get("summary"), SUMMARY_MAX),
         # 逐题复盘。**可能是空列表**（模型没给、或全被丢掉）—— 消费方都要能接受
         # 它为空（页面上那段就不渲染），这是老会话（没有这个字段）也能打开的前提。

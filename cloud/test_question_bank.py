@@ -27,8 +27,8 @@ SOURCE = SOURCE_PATH.read_text(encoding="utf-8")
 ALLOWED_IMPORTS = {"json", "logging", "pathlib", "re", "threading", "unicodedata"}
 
 # 三个中文岗位的题数（与 question_bank/README.md 的出处表一致）
-ZH_ROLE_COUNTS = {"AI 应用开发": 748, "AI Agent 开发": 315, "大模型算法工程师": 120}
-EN_ROLE_COUNTS = {"AI/ML Engineer": 576, "Data Scientist": 495, "Data Analyst": 576}
+ZH_ROLE_COUNTS = {"AI 应用开发": 748, "智能体开发": 315, "大模型算法工程师": 120}
+EN_ROLE_COUNTS = {"机器学习工程师": 576, "数据科学家": 495, "数据分析师": 576}
 
 # 演示岗位 + 每个题库岗位都要过一遍，防止某个岗位的数据把块撑爆
 ALL_ROLES = list(ZH_ROLE_COUNTS) + list(EN_ROLE_COUNTS)
@@ -134,7 +134,7 @@ class TestCacheIntegrity(unittest.TestCase):
         for round_index in range(10):
             qb.search_questions(SAMPLE_ANSWER, role="AI 应用开发")
             qb.pick_candidates("AI 应用开发", SAMPLE_ANSWER, "之前问过的题", round_index)
-            qb.build_reference_block("Data Scientist", SAMPLE_ANSWER, "", round_index)
+            qb.build_reference_block("数据科学家", SAMPLE_ANSWER, "", round_index)
         after = [(r["question"], r["role"], r["category"]) for r in bank[:50]]
         self.assertEqual(before, after, "缓存被就地排序污染了")
 
@@ -180,14 +180,17 @@ class TestRoleMapping(unittest.TestCase):
             "ＡＩ应用开发": "AI 应用开发",          # NFKC 全角
             " AI 应用开发 ": "AI 应用开发",
             '"AI 应用开发"': "AI 应用开发",
-            "AI Agent 开发": "AI Agent 开发",
-            "AI Agent开发": "AI Agent 开发",
+            "AI Agent 开发": "智能体开发",          # 旧英文名仍可映射
+            "AI Agent开发": "智能体开发",
+            "智能体开发": "智能体开发",
             "大模型算法工程师": "大模型算法工程师",
             "算法工程师": "大模型算法工程师",
-            "ai/ml engineer": "AI/ML Engineer",
-            "AI/ML Engineer": "AI/ML Engineer",
-            "数据分析师": "Data Analyst",
-            "数据科学家": "Data Scientist",
+            "ai/ml engineer": "机器学习工程师",
+            "AI/ML Engineer": "机器学习工程师",     # 旧英文名仍可映射
+            "机器学习工程师": "机器学习工程师",
+            "数据分析师": "数据分析师",
+            "Data Analyst": "数据分析师",           # 旧英文名仍可映射
+            "数据科学家": "数据科学家",
             "AI 应用开发工程师": "AI 应用开发",     # 双向包含
         }
         for raw, expected in cases.items():
@@ -328,8 +331,11 @@ class TestRoleFocusCoverage(unittest.TestCase):
 
     def test_每个题库岗位都有追问角度(self):
         focus = self._focus()
-        self.assertEqual(set(focus), set(ALL_ROLES),
-                         "role_focus 的键必须与题库岗位一一对应（多了少了都是漂移）")
+        # 2026-10-31 岗位名改中文后，旧英文键保留给历史会话/排练用；
+        # 新键必须与题库的六个中文岗位一一对应（多一个少一个都算漂移）。
+        legacy = {"AI Agent 开发", "AI/ML Engineer", "Data Scientist", "Data Analyst"}
+        self.assertEqual(set(focus) - legacy, set(ALL_ROLES),
+                         "role_focus 的新键必须与题库岗位一一对应（多了少了都是漂移）")
 
     def test_角度不是空话(self):
         for role, text in self._focus().items():

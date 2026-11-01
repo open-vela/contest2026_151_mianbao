@@ -3300,7 +3300,8 @@ clone 目录即可被编译吃到。另：VM 重启会清 /tmp，`build_fw.sh` �
 
 * 编译日志出现 `CC: audio_io.c` → `LD: nuttx` → `pack finish`；
 * 新镜像 **`6729f264…`**（旧 `5874bf71…`），sha256 已核对不同 —— 改动确实进镜像；
-* 已拉回 `D:\面包包irmwaretos_nuttx_r528s3-velaevb1_uart0_256Mnand.img`。
+* 已拉回 `D:\面包包irmware
+tos_nuttx_r528s3-velaevb1_uart0_256Mnand.img`。
 
 **待真机验证**：① 默认音量（60%）应比上一版明显响（≈ 旧版 100% 的响度）；
 ② 100% 不破音（破了就把 168 → 166）；③ −/＋ 档手感仍是每档 1.5dB 一小步。
@@ -3666,3 +3667,372 @@ venv 全量 **349 项全过**；内联 JS 过 `node --check`；真机冒烟：`/
   共用同一套后端接口（小程序只需加 `wx.login → openid` 映射）。
 * 设备一旦绑定就不会再弹二维码；要换账号需删 `/data/ai_interview_user` 后重启
   （后续可加"切换账号"命令）。
+
+### 11.69 开机串口配 Wi-Fi + 自动启动主程序（2026-10-31，待真机验证）
+
+**用户口径变化**：配网页虽然做在屏上（§11.67），但用户要求改成
+"**一开机就在串口提示输入热点名和密码**，不用先敲 `ai_interview`，也不用碰屏幕"。
+所以把首次配置的主入口从屏上改到串口，并让主程序开机自启。
+
+**固件**
+* `wifi_connect.c/.h` 新增 `wifi_serial_setup()`：
+  - 只在没有凭据时由 `main()` 在**工作线程启动前**调用；
+  - `isatty(0)` 不是终端就跳过（被重定向时不会傻等）；
+  - 提示 `热点名称（SSID）:` / `热点密码（输入不回显，输完回车）:`，密码用 termios
+    关 ECHO（本板 `CONFIG_SERIAL_TERMIOS=y`），输入后恢复；密码长度按 `wapi psk`
+    的要求校验 8~63 位；
+  - 复用 `cred_ok()` 白名单（空格/引号/分号等拒绝）与 `persist_creds()`，
+    连续 3 次不合法才放弃；直接回车可跳过。
+* `main.c`：开机先 `wifi_have_creds()`，没有就串口配置；屏上配网页**不再自动弹**，
+  只保留待机页右上角「Wi-Fi」作为兜底入口。
+* `main.c` 另加两个开机小设施（自启后没有 nsh 提示符，必须留出入口）：
+  - `boot_shell_window()`：开机 2 秒内按回车 → `posix_spawn("nsh")` 进命令行，
+    `exit` 后回到启动流程。用于 `rm /data/ai_interview_wifi`、`ifconfig` 等调试；
+    常规范式下 select 要一整行，所以提示是"按回车"，不是"按任意键"。
+  - `load_cloud_url_file()`：`/data/ai_interview_cloud` 一行地址 →
+    `setenv("CLOUD_URL")`，演示换服务器不必重编或进 nsh。
+
+**开机自启（关键发现）**
+* 这块板的 `CONFIG_ETC_ROMFS=y`，而 `nsh_init.c` 在
+  `#if defined(CONFIG_ETC_ROMFS) && !defined(CONFIG_NSH_DISABLESCRIPT)` 下
+  会执行 `/etc/init.d/rcS` —— **不需要额外改 defconfig**。
+* 往 vendor 的 `src/etc/init.d/rcS` 末尾追加启动命令即可开机自启；
+  `tools/apply_boot_autostart.sh` 做这件事（幂等，默认 `~/vela-opensource`）。
+* 首次上电：rcS 启动主程序 → 主程序在串口提示 → 保存后工作线程连网 → 待机页。
+
+**真机事故与修复（同一天，镜像 `4becaade` → `d4cf1cc8`）**
+* 现象：输入 Wi-Fi 后串口无限刷 `NuttShell (NSH)` 与
+  `nsh: ifup: missing required argument(s)`，按键停不下来。
+* 根因：`wifi_connect_boot()` 用 `posix_spawn("nsh", "-c", ...)` 跑联网命令；
+  而 **nsh 每次启动都会执行 `/etc/init.d/rcS`**，rcS 又启动 `ai_interview`
+  → 新实例又 spawn nsh → 无限递归。`nsh_initialize` 里的
+  `g_nsh_script_initialized` 是**进程内**静态量，管不到新 nsh 进程。
+  （`ifup` 报错是递归实例里 argv 被搅乱后的次生现象。）
+* 修复一：联网不再经过 nsh。`wifi_connect_boot()` 改为
+  - `netlib_ifup("wlan0")`（直接调库，等价 nsh 的 ifup）；
+  - `posix_spawn("wapi", {"wapi","mode/psk/essid/power_save",...})`
+    直接启动 `wapi` 内置命令；
+  - `posix_spawn("renew", {"renew","wlan0"})` 跑 DHCP（renew 内置栈 2MB，
+    不能在工作线程里直接调 `netlib_obtain_ipv4addr`）。
+  这样不会触发 nsh 初始化，也就不会重跑 rcS。
+* 修复二：rcS 自启加防重入标记 `/tmp/ai_interview_started`（tmpfs，每次开机清空）。
+  即使以后有别的路径 spawn nsh（例如 2 秒调试窗口），也不会再启动第二个主程序。
+* 修复三（同轮收尾）：去掉 `boot_shell_window()` 的"2 秒内按回车进 nsh"。
+  现象是用户看到配网提示就开始输入，首字符被这个窗口的 select 读走并启动 nsh，
+  后面的密码全进了 nsh（"密码输不进去"的真凶之一）。
+* 修复六（串口逃逸，2026-10-31）：自启后没有 nsh 提示符，用户无法回到命令行。
+  改为**空闲时（不在面试）在串口输入 `nsh` 回车** → `posix_spawn("nsh")`，
+  `exit` 返回主程序。主循环用零超时 `select` 检查 stdin，不阻塞、不影响配网。
+  主程序启动时还会确保 `/tmp/ai_interview_started` 存在，防止从这个 nsh
+  重跑 rcS 再启动一个主程序。
+* 修复四（第三次真机）：递归修好后，`wapi mode` 在驱动初始化里 data abort：
+  - 现场：`task(CPU0): wapi process: wapi`，`Data abort PC` 反查到
+    `mm_foreach ← mm_mallinfo ← mallinfo ← _freertos_GetFreeHeapSize ←
+    realtek_wl_set_mode`；
+  - 根因：Realtek 驱动初始化（`wifi_on`）调 `mallinfo()` 遍历整个用户堆，
+    而 NuttX 的 `mallinfo` **不加堆锁**；此时工作线程/界面线程还在并发
+    malloc/free（崩溃时主线程正等 `Mutex:29`），遍历到一半堆被改动 → data abort。
+    手工在 nsh 里敲同样的命令时程序是空闲的，所以从没出过事；
+  - 修复：把 `wifi_connect_boot()` 从工作线程挪到**主线程**，放在界面初始化之后、
+    创建工作线程之前执行（主线程阻塞等子任务，期间没有其它线程分配）。
+    工作线程只保留云端健康检查与绑定申请。
+* 修复五：不赌时序，直接把崩溃点修掉。`customer_rtos_service.c` 的
+  `_freertos_GetFreeHeapSize()` 只用于内存统计日志，却调用无锁的 `mallinfo()`
+  遍历堆；改为返回固定值 16MB（`tools/patch_realtek_freeheap.sh`，幂等）。
+  驱动重新编译后 `libdrivers.a` 重链，崩溃点不再存在。
+* 备注：错误口令/改热点仍可从 2 秒窗口进 nsh，删 `/data/ai_interview_wifi` 后复位。
+
+**打包踩坑（重要）**
+* `pack` 依赖 `lunch_nuttx` 设置的 `RTOS_TARGET_*` 变量；**必须和 `lunch_nuttx`
+  在同一个 shell 里执行**。单独 `pack` 会打 `platform(%%_*) not support` 并退出 1，
+  镜像时间戳/哈希都不变（这次因此一度以为"改了代码但镜像没变"）。
+* 正确顺序（同一 shell）：`source vela_env.sh && source envsetup.sh
+  && lunch_nuttx r528s3-velaevb1 && m && pack`。
+* 最终镜像 sha256 `018c1987…`（40,102,912 字节，10-31 04:02），可搜到
+  `ai_interview_started`、`skip autostart`、`/data/ai_interview_cloud`、
+  `首次使用：配置 Wi-Fi`、`密码（输入不回显`、`进入命令行（exit 返回主程序）`；
+  已搜不到 `2 秒内按回车进入命令行`（窗口已删）。编译日志里应有
+  `CC: platform/realtek_ieee80211/os/customer_rtos/customer_rtos_service.c`
+  与 `IN: drivers/libdrivers.a`（驱动补丁生效的判据）。中间镜像
+  `4becaade…`（递归）、`d4cf1cc8…`（wapi 崩溃）、`3140c47e…`/`8d8a78b8…`
+  （未含驱动补丁）、`eeee53f0…`（无串口逃逸）均已被覆盖；
+  `D:\面包包\firmware\` 只留最终文件。
+
+**上板验证清单**
+1. 烧录后直接上电（烧录会重置 `/data`，无需手动删凭据）；
+2. 串口应直接出现「首次使用：配置 Wi-Fi」，输入 SSID/密码（密码不回显）；
+3. 输入后串口出现 `[Wifi] 已保存热点`、`[Main] 检查 Wi-Fi`、`[Wifi] 开始连接热点`；
+   **不应**再出现 `NuttShell (NSH)` 刷屏（rcS 防重入失效）或
+   `Data abort ... task: wapi`（mallinfo 并发崩溃）；两种情况都立即回报；
+4. 屏上应进待机页（不再自动弹配网页）；右上角「Wi-Fi」仍可打开屏上配网页；
+5. 再复位：不再提示输入，直接自动联网进待机页；
+6. 输错密码时串口逐条报失败，可在待机页「Wi-Fi」重配；要重走开机串口提示，
+   需重烧镜像（会重置 `/data`）。
+
+### 11.70 用户六项改动（2026-10-31，镜像 bc69f33b，待真机验证）
+
+**1. 屏上 Wi-Fi 页加「返回」**
+* `interview_ui.c`：配网页左上角新增「返回」按钮（`wifi_skip_event`），
+  与「跳过」同动作：收起配网页回待机，不删已保存凭据。
+  之前只有「跳过」不明显，用户只能 K1 进面试再结束才能回待机。
+
+**2. 开场白音量与后续回应不一致**
+* 根因：`HPOUT gain volume` 只在 `codec_configure()` 里设置，而它**第一次录音**
+  才执行；开场白在录音之前播放，用的是 codec 默认增益 → 第一句小、后面突然变大。
+* 修复：`audio_set_volume()` 与 `audio_play_wav()` 都统一设置
+  `HPOUT gain volume=7` + DACL/DACR digital volume，保证每次播放同一口径。
+
+**3. 六个岗位名全改中文**
+* 新名：`AI 应用开发` / `智能体开发` / `大模型算法工程师` / `机器学习工程师` /
+  `数据科学家` / `数据分析师`。
+* 题库数据：`zh_questions.json` 315 条 `AI Agent 开发` → `智能体开发`；
+  `ai_questions.json` 1647 条英文岗位 → 三个中文名。
+* 同步：`ROLE_ALIASES`（旧英文名保留为别名，历史会话仍能归一化）、
+  `skills/next_question.json` 的 `role_focus`（新增中文键，旧键保留给历史/排练）、
+  固件 `app_config.h` 岗位表、网页 `ROLES`、导入器（`import_dataset.py` 加
+  `ROLE_NAME_ZH`）、README/question_bank README、相关测试。
+* 云端全量 **365 项测试通过**（后加权总分改到 366）。
+
+**4. 网页前端配色**
+* `cloud/static/index.html`：背景加品牌色径向渐变；顶栏加渐变下划线、品牌色方块；
+  报告卡/成长卡加彩色顶边与阴影；按钮、评分条、总分、chips、历史项 hover 统一
+  改用品牌蓝/紫/青三色；所有颜色仍走 CSS 变量，未引入外部依赖/CDN。
+
+**5. Wi-Fi 与 ai_interview 解耦（进 nsh 不再断网）**
+* 现象：串口逃逸 spawn nsh 后 Wi-Fi 掉线。根因：nsh 启动执行 rc.sysinit，
+  `mount -t tmpfs /tmp` 把 rcS 的防重入标记清掉；rcS 又启动一个 `ai_interview`，
+  第二个实例重跑 `wapi mode` 初始化驱动，把第一个实例的 Wi-Fi 断掉。
+* 修复：主程序启动时取**命名信号量** `/ai_interview`（`CONFIG_FS_NAMED_SEMAPHORES=y`）；
+  第二个实例在**任何初始化（尤其 Wi-Fi）之前**直接退出。信号量是内核对象，
+  不受 /tmp 重挂影响、开机自动清空。
+* 效果：进 nsh、`exit`、再进 nsh，Wi-Fi 保持；第二个实例只打一行
+  `[Main] 已有实例在运行，本实例退出`。
+
+**6. myagent（https://github.com/xunzhekafei/myagent，MIT，同作者）可复用项**
+* **已拿过来**：评分口径 `interview_spec.py` 的加权总分（技术正确性 30 /
+  深度与原理 30 / 工程与场景思考 25 / 表达与结构 15，缺维度按已有权重归一化）。
+  `cloud/score_guard.py` 去掉四维简单平均，新增 `weighted_total()`；加单测
+  （10/10/0/0 → 60，而非均分 50）。**366 项测试通过**。
+* **看过但先放着**（需要产品取舍/改动大）：
+  - 评分 evidence 逐字原话的**硬校验 + 重试**（我们已有 `verify_evidence` 软校验）；
+  - 追问深度阶梯（按回答质量决定深入/换角度/换主题，层数随压力 2/3/4）——
+    我们现在是提示词里的 1/2/3 轮上限；
+  - 弱点生命周期（主题聚类、首次/最近、1/3/7/14 天复习、归档）——
+    我们的 `growth.py` 目前只有「连续两场低于 6 分」；
+  - 报告逐题流式返回、评分校准（Spearman/bootstrap）—— 工程量大，暂不引入。
+
+**镜像与验证**
+* 镜像 sha256 `bc69f33b…`（40,102,912 字节，10-31 16:31）；可搜到
+  `已有实例在运行`、`智能体开发`、`数据分析师`、`返回`。
+* 上板验证：① 配网页左上角「返回」能回待机；② 开场白与后续回应音量一致；
+  ③ K3 六个岗位全中文；④ 串口 `nsh` 进/出后 `ifconfig` 仍显示 172.20.10.x，
+  Wi-Fi 不断；⑤ 重新配 Wi-Fi、开机自启、扫码绑定回归。
+
+### 11.71 外壳最后一轮：孔距/按键修正 + 兜底开口（2026-11-01）
+
+**用户实测反馈**
+1. 四个铜柱孔的中心距在壳上仍大约 1mm → 间距调小 1mm；
+2. 按钮孔在壳上高了 1mm → 往下调 1mm；
+3. 时间只够最后一版，要兜底：
+   - 铜柱开口扩大 1.5 倍；
+   - 底边四个口（USB-C×2 / TF / LCD&TP）合成一条横槽，垂直高度 ×1.5，
+     水平向两侧各外扩 2mm；
+   - 按钮那一侧做成可拆卸/直接去掉，确保按钮能用；
+   - 顶盖暂时不要。
+
+**脚本参数（`hardware/enclosure/make_case.py`）**
+* `STD_DX 80.5 → 79.5`、`STD_DY 49.0 → 48.0`（两个变体都生效）。
+* `KEY_Z_CENTER = Z_BOARD_TOP + 0.0`（原 +1.0；只影响精确件——兜底件去掉该侧壁）。
+  注：若用户说的"垂直距离"是沿边 Y 方向，则精确件还要改 `KEY_YS_FROM_BOT`；
+  兜底件不受影响，已在 README 标注。
+* 兜底件：
+  - `STD_HOLE = 6.3`（4.2 × 1.5）；
+  - 底边横槽：X **14.0 ~ 81.5**（最左口左缘 -2 / 最右口右缘 +2），
+    Z **4.625 ~ 11.375**（4.5 × 1.5，仍以 `Z_USBC=8` 为中心）；
+  - 右壁（X=OUT_W）从 `FLOOR` 往上整面减掉，保留 3mm 底板边沿；
+  - 不生成 `case_top.stl`。
+* 输出两个变体：
+  - `case_bottom.stl` = 兜底件（默认打印）；
+  - `case_bottom_precise.stl` = 精确件（孔距/按键修正，保留四个独立口）。
+  旧的 `case_top.stl`、`case_bottom_usb_dual.stl` 已删除。
+
+**几何自检（trimesh.contains 探针）**
+* 右壁 X≈93.7 → 空（敞开）；左壁 Y=70 → 实；端子开口 Y=40,Z=10 → 空。
+* 底边横槽 X=20/78,Z=8 → 空；X=12/90,Z=15 → 实；槽两端边界正确。
+* 兜底件四个铜柱孔中心 → 空；孔旁底板 → 实。
+* 精确件四孔中心距 **79.5 × 48.0**；三个按键孔中心在 `Z=8.8`（板面），孔位为空。
+* 体积：兜底件 35.1 cm³ / 精确件 39.9 cm³；外廓 95 × 82.5 × 24.2。
+
+### 11.72 MIMO 对话模型下线 → "生成问题失败"（2026-11-01）
+
+**现象**：板子每轮面试官都回"抱歉，生成问题失败，请重试。"，但 Flask 健康检查正常、
+ASR/TTS 也都 200。
+
+**根因**：Flask 日志里每轮都是
+`400 Bad Request: Unsupported model mimo-v2.5`。MIMO 已下线 `mimo-v2.5` 这个
+**对话**模型（`/v1/models` 只剩 `mimo-v2.5-asr` / `mimo-v2.5-tts*`），
+`llm_service.LLM_MODEL` 还写死 v2.5 → `call_llm` 返回空 → 兜底文案。
+
+**修复**：
+* `cloud/llm_service.py`：`LLM_MODEL = os.environ.get("LLM_MODEL", "mimo-v2.6-flash")`。
+  现网可用对话模型：`mimo-v2.6-flash` / `mimo-v2.6-pro` / `mimo-v2.6-pro-ultraspeed`。
+* `THINKING_DISABLED={"thinking":{"type":"disabled"}}` 在 v2.6-flash 上复测有效
+  （reasoning_content 为空，简单请求 ~0.9s）。
+* 重启 Flask；`POST /api/interview/text` 实测 200、3.7s 返回首问；
+  `next_question` 直调 3.1s 返回追问。ASR/TTS 无需改动。
+* 云端 **366 项测试通过**。
+
+**运维口径**：以后 MIMO 换模型只改 `LLM_MODEL` 环境变量/默认值，并复测
+`thinking` 参数；先看 Flask 错误日志里的 `Unsupported model` 再怀疑网络。
+
+### 11.73 进 nsh 断网的真因：CONFIG_NSH_NETINIT（2026-11-01，镜像 3d9de3af）
+
+**现象**：串口输入 `nsh` 后 `ifconfig`：
+```
+wlan0 ... at RUNNING
+      inet addr:0.0.0.0 DRaddr:10.0.0.1 Mask:255.255.255.0
+```
+Wi-Fi 地址被清空；同时串口有 `nsh: mount: mount failed: 20`。
+
+**根因（不是 rcS 重入，也不是单实例锁能拦住的）**：
+本板 `.config` 里 **`CONFIG_NSH_NETINIT=y`**。`apps/nshlib/nsh_init.c` 在
+`nsh_initialize()` 里无条件调用 `netinit_bringup()`；**每一个完整 nsh 进程**
+启动都会跑一遍网络初始化（DHCP/静态地址、wapi mode 等），把已经连上的 wlan0
+重置掉（`10.0.0.1` 就是 netinit 的默认网关）。单实例锁只能拦住第二个
+`ai_interview`，拦不住 nsh 自己跑 netinit。
+
+**修复**：
+* 串口逃逸改为 spawn **`sh`**（`apps/system/nsh/sh_main.c` →
+  `nsh_system_ctty()`）：只建 console + `nsh_session`，**不调用**
+  `nsh_initialize()`，因此不跑 rcS、不跑 `netinit_bringup`。
+* 触发词接受 `nsh` 或 `sh`；`exit` 返回主程序。
+* 单实例锁保留，防其它路径（手动起完整 nsh、rcS 重入）拉起第二个主程序。
+* `ifconfig` / `wapi` / `rm` 等内置命令在 `sh` 里仍可用（同一套 nsh 命令表）。
+
+**验证**：新镜像 `3d9de3af…`。上板：进 `sh` 后 `ifconfig` 应仍是 `inet 172.20.10.x`；
+`exit` 后按 K1 面试正常。`CONFIG_NSH_NETINIT` 本身**没有**关（避免影响板级
+其它 nsh 用法），只是不再用完整 nsh 做串口逃逸。
+
+### 11.74 myagent 四项后端落地：评分口径/薄弱点生命周期/证据重试/导演环（2026-11-01）
+
+按"云端优先、板子零改动"的顺序落地，均无固件改动。
+
+**1. 评分口径唯一来源（`cloud/interview_spec.py`，新）**
+* `SCORING_VERSION=2`、`DIMENSIONS`（维度+权重 30/30/25/15）、`DIMENSION_NAMES`、
+  `weighted_total()` 只在这里定义；`score_guard` 改为 re-export，`growth` 的维度
+  对比也 import 它。
+* `score_guard.normalize()` 的输出新增 `scoring_version`；`growth.point_of()` 把它
+  带到成长点，`build_growth()` 返回 `scoring_versions` / `version_mixed`，网页在
+  跨版本时提示"趋势仅供参考"。
+* `skills/generate_feedback.json` 的硬编码四维改成 `{dimensions}` 占位符，
+  `generate_feedback()` 用 `interview_spec.DIMENSION_TEXT` 注入；`score_report` 的
+  维度清单也走 `interview_spec`。至此"改维度只改一处"。
+* 测试：`test_score_guard.test_records_scoring_version`、
+  `test_growth.test_version_mixed_is_flagged` / `test_same_version_is_not_mixed`。
+
+**2. 薄弱点生命周期（`growth.weak_lifecycle()`，网页成长卡）**
+* `point_of()` 增加 `weak_items`（低于 6 分的维度 + 最近评语）；`weak_lifecycle()`
+  按维度聚合：`times_seen / first_seen / last_seen / latest_score / good_streak /
+  improved / archived / interval_days / next_review / due`。
+* 简化 SM-2：低分时重置 1 天；连续评估质量 ≥3 时按 1/3/7/14 天拉长；连续 3 次
+  评估达标且曾出现 ≥2 次 → 归档。**missing（模型漏评）不算改善**，不中断低分链。
+* `/api/growth` 新增 `weak_lifecycle`；网页「总分曲线」下新增「薄弱点复习」列表
+  （出现次数/最近/下次复习/该复习/已改善），已归档不显示。
+* 测试：`test_growth.TestWeakLifecycle` 4 项（重复低分、改善+归档、missing、
+  间隔 1→3）。
+
+**3. 报告证据硬校验 + 重试一次（`llm_service.score_interview`）**
+* 首份评分 `verify_evidence()` 有对不上的维度 → 追加一条纠偏 user 消息，要求
+  **只改这几项 evidence 为逐字原话**，重试一次。
+* 重试后对不上的数量减少才采用重试结果；否则保留首份。结果写
+  `evidence_status`（ok/partial）与 `evidence_unmatched`，**不丢整份评分**。
+* 只在报告阶段发生，不在对话关键路径；正常（evidence 已逐字）零额外调用。
+* 测试：`test_scoring.test_evidence_retry_once_on_paraphrase` /
+  `test_evidence_retry_still_partial_keeps_score` /
+  `test_no_retry_when_evidence_is_verbatim`。
+
+**4. 轻量导演环（`cloud/director.py`，新）**
+* 双环：设备实时环（不动）+ 云端导演环（本轮动作）；模型只写那句话。
+* 纯规则、零额外模型调用：`signal()` 把上一答分成 empty/thin/normal/substantive；
+  `decide()` 给出 `deeper / angle / switch_topic`；压力上限 1/2/3 与
+  `next_question.json` 的规则对齐；只在 background/technical 生效。
+* **只看当前段内**的回答（background 从第 2 轮、technical 从第 4 轮起切片），
+  段边界 streak 归零，避免背景深答让技术追问一开场就换主题。
+* `next_question` 把 `【导演】本轮动作：…` 注入本轮 user 消息，串口日志打
+  `[导演] 第 N 轮：…`。
+* 测试：`test_director.py` 9 项 + `test_next_question.TestDirectorHint` 2 项；
+  真机/文字链路实测：第 2 轮 thin → 同层换角度；第 3/4 轮实答 → 深入一层。
+
+**验证**
+* 云端全量 **387 项测试通过**；Flask 已重启（新模块生效），
+  `/api/growth` 已返回 `scoring_versions/version_mixed/weak_lifecycle`。
+* 前端 JS 通过 `node --check`；模型仍为 `mimo-v2.6-flash`。
+
+**暂缓**：结构化面试笔记/异步记忆（每轮多一次模型调用，需单独评估延迟/成本）；
+报告逐题流式、评分校准脚本。下一步等这四项在真机上稳定后再看。
+
+### 11.75 可配置面试轮数（2026-11-01，镜像 c9be14e7）
+
+**需求**：演示时 5~6 轮就结束，正式面试可能要数十轮；允许 ±2 偏差。
+
+**口径**：`target_rounds` = **问答轮数**（不含最后出报告的那一次），范围 **4~30**，
+默认 10（与原行为完全一致）。报告在第 **N+1** 次回答后出；候选人说"结束吧"仍可提前。
+
+**云端**
+* `interview_stage.py`：
+  - `normalize_target()` 只接受整数/纯数字字符串，1.5、8.0、bool、None 等回默认；
+  - `plan_for(N)`：开场 1 + 背景约 25% + 技术约 65% + 反问 1；**N=10 时逐字返回原
+    `STAGE_PLAN`**；`stage_key(round, N)` 支持动态段表；每张段表连续、至少 1 轮技术。
+* `llm_service.next_question(..., target_rounds)`：段表/导演环按目标轮数走；
+  `next_action` 与 `llm_interview` 的结束判据从固定 20 条改为 `2 × target_rounds`。
+* `session_manager.InterviewSession.target_rounds`：**建会话时钉住**；快照/摘要带上
+  该字段（老场次默认 10）。
+* `app.py`：`/api/interview` 与 `/api/interview/text` 都解析 `target_rounds`，
+  建会话时传入；旧客户端不带 → 默认 10，协议向后兼容。
+* 文字演练开场页新增「面试轮数」下拉（5/6/8/10/15/20/30），`start` 时上报。
+
+**端侧（镜像 d2b1f4ca）**
+* 待机页左上角新增「− 轮数：10 +」加减按钮，在预设 5/6/8/10/15/20/30 之间移动（与音量排同款交互）；
+  存 `/data/ai_interview_rounds`，断电记住；主线程回调里更新屏、写盘、通知网络层。
+* `network_client.c` 请求体新增 `"target_rounds":N`；`cloud_set_target_rounds()`
+  做 4~30 范围校验。
+* 串口启动日志新增 `[Main] 面试轮数: N（报告在第 N+1 次回答后出）`。
+* 编译 `CC: interview_ui.c / main.c / network_client.c` → `LD: nuttx`，0 警告；
+  镜像 sha256 `c9be14e7…`；可搜到 `轮数：10`、`target_rounds`、`面试轮数`；
+  加减按钮的 UI 回调参数为 ±1（`ui_rounds_cb_t(int delta)`）。
+
+**测试**
+* 云端 **394 项测试通过**（新增动态段表 4 项、目标轮数结束判据 3 项）。
+* 文字链路实测：`target_rounds=6` 建会话，之后把请求里的 target 改成 10，会话
+  仍是 6（钉住生效）。
+
+**偏差说明**：文字演练的 `state=start` 会先问第一句，所以同样 N 轮会比设备少一次
+"先答后问"的错位（约 1 轮）；在用户允许的 ±2 内。设备链路的"第 N+1 次回答出报告"
+是精确的。
+
+### 11.76 reply_guard 推演泄漏 + 演示话术 v4（2026-11-02）
+
+**现象**：用户人工测试 5 场（智能体 4 + 视频 1）里，会话 `5977ce93` 的面试官突然输出
+一大段「候选人的回答很空……字数控制在 120 字内……这段算点破空话吗……」。那不是
+面试官的话，是模型把**内部推演**写进了正文；`_META_LINE_RE` 只认行首「判断：/理由：」，
+抓不到这种没有标签的推演段。
+
+**修复（`cloud/reply_guard.py`）**
+* 新增推演强特征：`字数控制 / 数一下字数 / 这段算 / 按压力档 / 一个问题结尾 /
+  换一种问法 / 约XX字 / 贴着项目` 等；`_is_dirty()` 命中即视为脏。
+* `_salvage_question()`：先从「」里找带问号的最终问句，再从句子级问号句里兜底；
+  过滤掉仍含推演标记的句子。`strip_meta()` 命中推演时只返回捞出的问句，捞不到返空，
+  由调用方用 `FALLBACK_QUESTION` 顶上。
+* `clean_history()` 自动让已污染的历史自愈（下一轮不再学这段推演）。
+* 测试新增 2 项（真实泄漏样本 + 正常含「可以」问句不误伤）；云端 **396 项测试通过**。
+
+**演示话术 v4**
+* 新增 `demo/demo_pitch_v4.md`：两层追问树（第一层“你怎么做”，第二层“数字怎么来的、
+  改了什么、怎么归因、是不是过拟合、失败怎么恢复”）。
+* 依据：用户 5 场人工实测 + 20 场技术/产品向 + 10 场按人工追问改答案的复跑。
+* 重点补了：权重依据/调过权重、JSON schema 空字段识别、观察池上限/回扫触发、
+  负样本选择、precision/recall 合格线、转化率分子分母、18→7 的消融归因、
+  50 视频分布/过拟合、覆盖与事实错误判定及 Kappa、术语表长尾更新、
+  两项改动收益归因。
+
+**固件**：最新仍是 `c9be14e7…`（轮数加减按钮版，待烧录）；本轮无固件改动。

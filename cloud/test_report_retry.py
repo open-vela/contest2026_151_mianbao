@@ -121,8 +121,10 @@ class TestSystemPromptIsUsed(RetryTestCase):
         out, calls = self.run_feedback([WITH_QUOTE])
         skill = llm_service.load_skill("generate_feedback")
         self.assertTrue(skill.get("system_prompt"), "读不到提示词（skills/ 是否随代码拷过来了）")
-        self.assertEqual(calls[0]["system_prompt"],
-                         skill["system_prompt"].replace("{role}", "AI 应用开发"))
+        expected = (skill["system_prompt"].replace("{role}", "AI 应用开发")
+                    .replace("{dimensions}",
+                             llm_service.interview_spec.DIMENSION_TEXT))
+        self.assertEqual(calls[0]["system_prompt"], expected)
 
     def test_prompt_covers_the_degenerate_case(self):
         """提示词里必须留着那条专门覆盖退化情形的说明 —— 它正是这次修复的根因所在：

@@ -14,12 +14,14 @@
   两场以上都低于阈值才列出来，避免给用户贴错标签。
 """
 import logging
+from datetime import date, datetime, timedelta
+
+import interview_spec
 
 logger = logging.getLogger(__name__)
 
-# 评分维度固定顺序（与 skills/generate_feedback.json、score_report.json 一致，
-# 见台账 §11.34 —— 报告正文与评分卡念的是同一套词）。
-DIMENSIONS = ("技术正确性", "深度与原理", "工程与场景思考", "表达与结构")
+# 评分维度固定顺序：唯一来源是 interview_spec（2026-11-01 收拢，别再在这里手写）。
+DIMENSIONS = interview_spec.DIMENSION_NAMES
 
 # 薄弱点阈值：单场低于它算"失分"；至少 2 场失分才算薄弱点。
 WEAK_SCORE = 6.0
@@ -63,6 +65,7 @@ def point_of(snapshot):
         snapshot = {}
     score = snapshot.get("score") if isinstance(snapshot.get("score"), dict) else {}
     dimensions = {}
+    weak_items = []
     for dim in score.get("dimensions") or []:
         if not isinstance(dim, dict):
             continue
@@ -70,6 +73,13 @@ def point_of(snapshot):
         value = _finite(dim.get("score"))
         if name and value is not None:
             dimensions[name] = value
+            if value < WEAK_SCORE:
+                text = (dim.get("comment") or dim.get("evidence") or "").strip()
+                weak_items.append({
+                    "dimension": name,
+                    "score": value,
+                    "text": text or f"{name}偏弱",
+                })
 
     messages = snapshot.get("messages") or []
     rounds = sum(1 for m in messages
@@ -81,6 +91,10 @@ def point_of(snapshot):
         "created_at": snapshot.get("created_at"),
         "total": _finite(score.get("total")),
         "dimensions": dimensions,
+        # 本场低于阈值的维度（含最近一次评语），供弱点生命周期聚类。
+        "weak_items": weak_items,
+        # 没有版本字段的老场次按 v1（四维均分）算；v2 起是 30/30/25/15 加权。
+        "scoring_version": score.get("scoring_version", 1),
         "rounds": rounds,
         "expression": _expression_summary(snapshot.get("expression")),
     }
@@ -151,11 +165,157 @@ def weak_points(points, threshold=WEAK_SCORE, min_sessions=WEAK_MIN_SESSIONS):
     return result
 
 
+# ---------------------------------------------------------------- 弱点生命周期
+# 2026-11-01：借鉴同作者 myagent 的 backend/profile.py（MIT）。
+# 只做**云端聚合**，板子不参与；给网页成长页显示"这个短板出现过几次、
+# 最近一次是什么时候、下次建议什么时候复习、是不是已经改善/归档"。
+REVIEW_INTERVALS = (1, 3, 7, 14)   # 简化版 SM-2：1/3/7/14 天
+ARCHIVE_AFTER_GOOD = 3             # 连续 3 次评估 >= 阈值且改善过 → 归档
+
+
+def _date_of(value):
+    """created_at 可能是 unix 秒（float）或 ISO 字符串；转成 date，失败返回 None。"""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value).date()
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _quality(score):
+    """0~10 的维度分 → 0~5 的复习质量（阈值同 myagent）。"""
+    if score is None:
+        return 2
+    if score >= 8.5:
+        return 5
+    if score >= 7.0:
+        return 4
+    if score >= 5.5:
+        return 3
+    if score >= 4.0:
+        return 2
+    return 0
+
+
+def weak_lifecycle(points, today=None):
+    """把「同一维度反复低分」聚合成有生命周期的薄弱项。
+
+    输入是 `point_of()` 的点（按时间升序）。只统计**该维度确实被评过**的场次：
+    某场里模型漏评该维度（missing）不算"改善"，也不中断连续低分。
+
+    返回每项：
+      dimension / text / times_seen / first_seen / last_seen / latest_score /
+      worst_score / good_streak / improved / archived / interval_days /
+      next_review / due
+    """
+    today = today or date.today()
+    scored = [p for p in (points or [])
+              if isinstance(p, dict) and isinstance(p.get("dimensions"), dict)
+              and p.get("dimensions")]
+
+    # 先按维度收集"被评过"的场次（保持时间顺序）
+    by_dim = {}
+    for point in scored:
+        for name, value in point["dimensions"].items():
+            if name in interview_spec.DIMENSION_NAMES:
+                by_dim.setdefault(name, []).append((point, value))
+
+    out = []
+    for name, assessments in by_dim.items():
+        if not any(value < WEAK_SCORE for _, value in assessments):
+            continue        # 从没低过，不算薄弱项
+
+        first_seen = last_seen = None
+        times_seen = 0
+        sessions = []
+        latest_text = ""
+        latest_score = None
+        worst_score = None
+        good_streak = 0
+        interval_days = 1
+        review_streak = 0
+        next_review = None
+
+        for point, value in assessments:
+            when = _date_of(point.get("created_at"))
+            latest_score = value
+            worst_score = value if worst_score is None else min(worst_score, value)
+
+            if value < WEAK_SCORE:
+                times_seen += 1
+                if when is not None:
+                    first_seen = first_seen or when
+                    last_seen = when
+                sid = point.get("session_id") or ""
+                if sid and sid not in sessions:
+                    sessions.append(sid)
+                for item in point.get("weak_items") or []:
+                    if item.get("dimension") == name and item.get("text"):
+                        latest_text = item["text"]
+                        break
+                good_streak = 0
+                interval_days = 1
+                review_streak = 0
+                if when is not None:
+                    next_review = when + timedelta(days=interval_days)
+            else:
+                good_streak += 1
+                if _quality(value) >= 3:
+                    interval_days = REVIEW_INTERVALS[min(review_streak,
+                                                         len(REVIEW_INTERVALS) - 1)]
+                    review_streak += 1
+                else:
+                    interval_days = 1
+                    review_streak = 0
+                if when is not None:
+                    next_review = when + timedelta(days=interval_days)
+
+        improved = times_seen >= 2 and good_streak >= 2
+        archived = improved and good_streak >= ARCHIVE_AFTER_GOOD
+        out.append({
+            "dimension": name,
+            "text": latest_text or f"{name}偏弱",
+            "times_seen": times_seen,
+            "first_seen": first_seen.isoformat() if first_seen else None,
+            "last_seen": last_seen.isoformat() if last_seen else None,
+            "latest_score": latest_score,
+            "worst_score": worst_score,
+            "good_streak": good_streak,
+            "improved": improved,
+            "archived": archived,
+            "interval_days": interval_days,
+            "next_review": None if archived or next_review is None
+                           else next_review.isoformat(),
+            "due": bool(not archived and next_review is not None
+                        and next_review <= today),
+        })
+
+    # 活跃的在前；同状态按出现次数、再按下次复习日期。
+    out.sort(key=lambda item: (item["archived"], -item["times_seen"],
+                               item["next_review"] or "9999-12-31"))
+    return out
+
+
 def build_growth(snapshots, limit=20):
     """给 `/api/growth` 用：把最近若干场聚合成一份可直接 jsonify 的报告。"""
     points = points_of(snapshots)[-int(limit):]
+    versions = sorted({p.get("scoring_version", 1)
+                       for p in points if p.get("dimensions")})
     return {
         "points": points,
         "deltas": dimension_deltas(points),
         "weak_points": weak_points(points),
+        "weak_lifecycle": weak_lifecycle(points),
+        # 跨版本提示：v1（均分）和 v2（加权）的分数不在一个尺度上，
+        # 前端看到 version_mixed 时应提示"趋势仅供参考"。
+        "scoring_versions": versions,
+        "version_mixed": len(versions) > 1,
     }
