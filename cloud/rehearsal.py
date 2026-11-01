@@ -11,7 +11,7 @@
     python3 cloud/rehearsal.py
 
     # 常用可选参数
-    python3 cloud/rehearsal.py --role "AI/ML Engineer"   # 换岗位（走英文题库）
+    python3 cloud/rehearsal.py --role "机器学习工程师"   # 换岗位（走英文题库）
     python3 cloud/rehearsal.py --rounds 3                # 只跑 3 轮（不校验报告轮）
     python3 cloud/rehearsal.py --say-finish --rounds 3   # 第 3 轮说"结束吧"，验证提前收尾
     python3 cloud/rehearsal.py --no-tts                  # 静音自检：验证空识别短路与历史奇偶

@@ -77,9 +77,45 @@ _STAGE_DIRECTION_RE = re.compile(
 # 给 TTS 的文本要把所有空白（含换行/空行）压成一个空格 —— 一段话一口气念完。
 _WHITESPACE_RE = re.compile(r"\s+")
 
+# 2026-11-01 真机会话（5977ce93）抓到的新型脏输出：模型把**内部推演**整段写进了正文，
+# 例如「字数控制在120字内」「数一下字数」「这段算点破空话吗」「一个问题结尾」「约60字」。
+# 这些行没有「判断：/理由：」行首标签，_META_LINE_RE 抓不到，必须靠强特征识别。
+# 识别出来之后不要按块保留（整段都有问号），而是从里面**捞出真正要问的那句**。
+_REASONING_MARKERS = (
+    "字数控制", "数一下字数", "数一下字", "这段算", "按压力档",
+    "一个问题结尾", "换一种问法", "符合压力档", "合并问", "先补上",
+    "更像重复追问", "贴着项目", "约60字", "约70字", "字，OK",
+    "这段算点破", "字数：",
+)
+_REASONING_RE = re.compile("|".join(re.escape(m) for m in _REASONING_MARKERS))
+
+# 正文里被引号括起来的候选问句（模型常把"最终要问的那句"写在「」里）。
+_QUOTED_RE = re.compile(r"「([^」]{4,180})」")
+# 句子级兜底：一句以问号结尾的话。
+_QUESTION_SENT_RE = re.compile(r"[^。！？\n]{2,180}[？?]")
+
+
+def _has_reasoning(text: str) -> bool:
+    return bool(_REASONING_RE.search(text or ""))
+
+
+def _salvage_question(text: str) -> str:
+    """从一段推演里捞出真正要问候选人的那句；捞不到返回空串。"""
+    for match in _QUOTED_RE.finditer(text or ""):
+        question = match.group(1).strip()
+        if ("？" in question or "?" in question) and not _has_reasoning(question):
+            return question
+    for match in _QUESTION_SENT_RE.finditer(text or ""):
+        question = match.group(0).strip()
+        if len(question) >= 8 and not _has_reasoning(question):
+            return question
+    return ""
+
 
 def _is_dirty(text: str) -> bool:
     """有没有元叙述痕迹。没有就别动它（干净文本零改动）。"""
+    if _has_reasoning(text):
+        return True
     for line in text.splitlines():
         if _SEPARATOR_RE.match(line) or _TABLE_ROW_RE.match(line):
             return True
@@ -127,6 +163,10 @@ def strip_meta(text: str) -> str:
     text = strip_stage_directions(text)
     if not text.strip():
         return ""
+    # 推演型脏输出：整段都可能有问号，按块保留会把思考过程全念出来。
+    # 只捞「」里的最终问句；捞不到就交给调用方的兜底问句。
+    if _has_reasoning(text):
+        return _salvage_question(text)
     if not _is_dirty(text):
         return text.strip()
 

@@ -97,6 +97,11 @@ class TestNormalize(unittest.TestCase):
         raw = dict(GOOD_RAW, total=999)
         self.assertEqual(normalize(raw)["total"], 70)
 
+    def test_records_scoring_version(self):
+        """评分结果要带口径版本，成长页才能识别跨版本不可比。"""
+        from interview_spec import SCORING_VERSION
+        self.assertEqual(normalize(GOOD_RAW)["scoring_version"], SCORING_VERSION)
+
     def test_score_is_clamped(self):
         raw = {"dimensions": [
             {"name": "技术正确性", "score": 12},     # 越界上限
@@ -150,6 +155,17 @@ class TestNormalize(unittest.TestCase):
         self.assertEqual(out["missing"], ["表达与结构"])
         self.assertEqual(out["total"], 70)      # 只按已评的三维取均值
         self.assertEqual(len(out["dimensions"]), 3)
+
+    def test_total_is_weighted_not_simple_average(self):
+        """总分按 30/30/25/15 加权（2026-10-31 取自 myagent 的评分口径）。"""
+        raw = {"dimensions": [
+            {"name": "技术正确性", "score": 10},
+            {"name": "深度与原理", "score": 10},
+            {"name": "工程与场景思考", "score": 0},
+            {"name": "表达与结构", "score": 0},
+        ]}
+        out = normalize(raw)
+        self.assertEqual(out["total"], 60)   # 3.0+3.0 = 6.0 → 60；简单平均会是 50
 
     def test_order_is_fixed_regardless_of_input(self):
         raw = {"dimensions": [

@@ -115,6 +115,22 @@ void cloud_init(void)
 
 static char g_user_token[128];
 
+/* 目标问答轮数（2026-11-01）：随每次面试请求上报；云端建会话时钉住。
+ * 默认 10；范围与云端一致（4~30）。 */
+static int g_target_rounds = 10;
+
+void cloud_set_target_rounds(int rounds)
+{
+    if (rounds >= 4 && rounds <= 30) {
+        g_target_rounds = rounds;
+    }
+}
+
+int cloud_target_rounds(void)
+{
+    return g_target_rounds;
+}
+
 void cloud_set_user_token(const char *token)
 {
     strncpy(g_user_token, (token != NULL) ? token : "",
@@ -627,7 +643,7 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
     sid = (req->session_id != NULL) ? req->session_id : "";
     body_cap = b64_len + strlen(sid) + strlen(req->role) +
                strlen(req->pressure) + strlen(req->state) +
-               strlen(g_user_token) + 256;
+               strlen(g_user_token) + 320;
     body = malloc(body_cap);
     if (body == NULL) {
         ret = CLOUD_ERR_NOMEM;
@@ -637,8 +653,10 @@ int cloud_send_audio(const cloud_request_t *req, cloud_response_t *resp)
     snprintf(body, body_cap,
              "{\"session_id\":\"%s\",\"audio\":\"%s\",\"audio_format\":\"wav\","
              "\"role\":\"%s\",\"pressure\":\"%s\",\"state\":\"%s\","
+             "\"target_rounds\":%d,"
              "\"user_token\":\"%s\",\"history\":[]}",
-             sid, b64, req->role, req->pressure, req->state, g_user_token);
+             sid, b64, req->role, req->pressure, req->state,
+             g_target_rounds, g_user_token);
 
     /* body 已拼好，立刻释放 base64 缓冲，降低峰值内存 */
     free(b64);

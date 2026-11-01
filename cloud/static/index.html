@@ -9,13 +9,18 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:        #f4f6fa;
+    --bg:        #f2f5fb;
     --card:      #ffffff;
-    --line:      #e3e8f0;
-    --ink:       #1c2333;
-    --ink-dim:   #6b7688;
-    --brand:     #2f6df6;
-    --brand-dim: #eaf0ff;
+    --line:      #e2e8f2;
+    --ink:       #182033;
+    --ink-dim:   #66748a;
+    --brand:     #3b6ef6;
+    --brand-2:   #7c4dff;
+    --brand-dim: #edf2ff;
+    --teal:      #0f9d9a;
+    --teal-dim:  #e6f7f6;
+    --amber:     #c2740a;
+    --amber-dim: #fff4e2;
     --ok:        #22c55e;
     --warn:      #f59e0b;
     --err:       #ef4444;
@@ -24,7 +29,11 @@
   html, body { height: 100%; }
 
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(1100px 520px at 12% -8%, rgba(79,139,255,.14), transparent 60%),
+      radial-gradient(900px 460px at 92% 0%, rgba(124,77,255,.10), transparent 55%),
+      linear-gradient(180deg, #f7f9fe 0%, var(--bg) 42%, #eef3fb 100%);
+    background-attachment: fixed;
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
                  "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
@@ -38,18 +47,37 @@
   /* ---------- 顶栏 ---------- */
   header {
     flex: none;
-    background: var(--card);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     border-bottom: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(255,255,255,.9), 0 8px 24px rgba(24,32,51,.05);
     padding: 14px 22px;
     display: flex;
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
+    position: relative;
+  }
+  /* 顶栏下沿一条品牌色渐变 —— 让整页第一眼就有主色 */
+  header::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--brand), var(--brand-2), var(--teal));
+    opacity: .75;
   }
   header h1 {
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 650;
     letter-spacing: .2px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  header h1::before {
+    content: "";
+    width: 11px; height: 11px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 0 0 3px rgba(59,110,246,.14);
+    flex: none;
   }
   header h1 .sub {
     color: var(--ink-dim);
@@ -180,10 +208,16 @@
   .report-card {
     background: var(--card);
     border: 1px solid var(--line);
+    border-top: 3px solid var(--brand);
     border-radius: 16px;
     padding: 16px 18px;
-    box-shadow: 0 1px 2px rgba(28,35,51,.04);
+    box-shadow: 0 6px 22px rgba(24,32,51,.07);
     margin-bottom: 22px;
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+  .report-card:hover {
+    box-shadow: 0 12px 30px rgba(24,32,51,.11);
+    transform: translateY(-1px);
   }
   .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .card-title { font-size: 15px; font-weight: 600; }
@@ -191,19 +225,37 @@
     font-size: 13px;
     text-decoration: none;
     color: #fff;
-    background: var(--brand);
+    background: linear-gradient(135deg, #5a8dff, var(--brand));
     border-radius: 9px;
     padding: 5px 13px;
     white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(59,110,246,.24);
+    transition: filter .15s ease, transform .15s ease, box-shadow .15s ease;
   }
-  .btn.ghost { background: var(--brand-dim); color: var(--brand); }
-  .btn:hover { filter: brightness(1.05); }
+  .btn.ghost {
+    background: var(--brand-dim);
+    color: var(--brand);
+    box-shadow: none;
+  }
+  .btn:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(59,110,246,.3);
+  }
   .card-note { font-size: 12.5px; color: var(--ink-dim); margin-top: 9px; }
 
   /* 评分区：没有 score 字段时整段不渲染 */
   .score { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 13px; }
   .total { font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; }
-  .total b { font-size: 27px; color: var(--brand); font-weight: 700; margin-right: 3px; }
+  .total b {
+    font-size: 27px;
+    font-weight: 800;
+    margin-right: 3px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
   .dims { display: grid; gap: 11px; }
   .dim-top { display: flex; justify-content: space-between; font-size: 13px; }
   .bar {
@@ -211,7 +263,12 @@
     overflow: hidden; margin-top: 4px;
   }
   /* 刻意不加 transition：卡片每次 render 都会整块重建，带动画就会反复闪。 */
-  .bar i { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
+  .bar i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--brand), var(--brand-2));
+    border-radius: 999px;
+  }
   .dim-comment { font-size: 12.5px; color: var(--ink-dim); margin-top: 4px; }
   .summary {
     font-size: 13px; margin-top: 12px; padding-top: 11px;
@@ -239,11 +296,18 @@
     color: inherit;
     background: var(--card);
     border: 1px solid var(--line);
+    border-left: 3px solid transparent;
     border-radius: 14px;
     padding: 13px 16px;
     margin-bottom: 10px;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
   }
-  .sess:hover { border-color: var(--brand); }
+  .sess:hover {
+    border-color: var(--line);
+    border-left-color: var(--brand);
+    box-shadow: 0 8px 22px rgba(24,32,51,.08);
+    transform: translateY(-1px);
+  }
   .sess-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .sess-role { font-weight: 600; font-size: 14px; }
   .sess-time { font-size: 12.5px; color: var(--ink-dim); }
@@ -362,8 +426,13 @@
      网格与轴用 --line / --ink-dim 退到背景层。颜色全部走 CSS 变量，
      页面若以后加深色主题，图表自动跟随。 */
   .growth {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--teal);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 18px rgba(15,157,154,.07);
   }
   .growth-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .growth-head h2 { font-size: 15px; margin: 0; }
@@ -385,9 +454,32 @@
   .growth-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .gchip {
     font-size: 12px; border-radius: 999px; padding: 3px 10px;
-    background: var(--brand-dim); color: var(--brand);
+    background: var(--teal-dim); color: var(--teal);
   }
-  .gchip.warn { background: #fff3e6; color: #b45309; }
+  .gchip.warn { background: var(--amber-dim); color: var(--amber); }
+  /* 薄弱点生命周期（2026-11-01） */
+  .weak-list { margin-top: 12px; }
+  .weak-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .weak-item {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    border-radius: 10px;
+    padding: 8px 11px;
+    margin-top: 7px;
+    background: #fffdf8;
+  }
+  .weak-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .weak-dim { font-size: 13px; font-weight: 600; }
+  .weak-due {
+    font-size: 11.5px; color: #b42318; background: #fff1f0;
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .weak-ok {
+    font-size: 11.5px; color: var(--teal); background: var(--teal-dim);
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .weak-text { font-size: 13px; margin-top: 4px; line-height: 1.55; }
+  .weak-meta { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
   .growth details { margin-top: 10px; }
   .growth summary { cursor: pointer; font-size: 12.5px; color: var(--brand); }
   .growth table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
@@ -400,12 +492,14 @@
   /* ---------- 文字演练（/text） ---------- */
   /* 开场面板：选岗位 + 开始。 */
   .starter {
-    background: var(--card);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     border: 1px solid var(--line);
+    border-top: 3px solid var(--brand);
     border-radius: 16px;
     padding: 22px 24px;
     max-width: 540px;
     margin: 7vh auto 0;
+    box-shadow: 0 14px 40px rgba(24,32,51,.09);
   }
   .starter h2 { margin: 0 0 12px; font-size: 17px; }
   /* 这段黄条是**刻意的**：文字演练不该被误当成正式用法 ——
@@ -465,7 +559,7 @@
   #jump {
     position: fixed;
     right: 26px; bottom: 26px;
-    background: var(--brand);
+    background: linear-gradient(135deg, #5a8dff, var(--brand));
     color: #fff;
     border: none;
     border-radius: 999px;
@@ -1193,7 +1287,32 @@
       html += '<div class="growth-note">再完成一场带评分的面试，就能看到与上一场的维度对比。</div>';
     }
 
-    if (d.weak_points && d.weak_points.length) {
+    // 跨评分口径：v1 是四维均分、v2 是 30/30/25/15 加权，分数不在一个尺度上。
+    if (d.version_mixed) {
+      html += '<div class="growth-note">注意：这些场次包含不同评分口径（v1 均分 / v2 加权），趋势仅供参考。</div>';
+    }
+
+    // 薄弱点生命周期（2026-11-01）：反复低分的维度 → 出现次数 / 最近一次 /
+    // 下次复习日 / 是否改善。已归档的不再打扰，只显示活跃项。
+    var life = (d.weak_lifecycle || []).filter(function (w) { return !w.archived; });
+    if (life.length) {
+      html += '<div class="weak-list"><div class="weak-title">薄弱点复习</div>';
+      life.forEach(function (w) {
+        var meta = "出现 " + w.times_seen + " 次";
+        if (w.last_seen) meta += " · 最近 " + w.last_seen;
+        if (w.next_review) meta += " · 下次 " + w.next_review;
+        html += '<div class="weak-item">' +
+          '<div class="weak-top"><span class="weak-dim">' + esc(w.dimension) + '</span>' +
+            (w.due ? '<span class="weak-due">该复习</span>' : '') +
+            (w.improved ? '<span class="weak-ok">已改善</span>' : '') +
+          '</div>' +
+          '<div class="weak-text">' + esc(w.text) + '</div>' +
+          '<div class="weak-meta">' + esc(meta) + '</div>' +
+        '</div>';
+      });
+      html += '</div>';
+    } else if (d.weak_points && d.weak_points.length) {
+      // 老接口的兜底：没有生命周期数据时，至少把"反复低分"的维度列出来。
       html += '<div class="growth-chips">';
       d.weak_points.forEach(function (w) {
         html += '<span class="gchip warn">' + esc(w.name) + ' 平均 ' + esc(w.average) +
@@ -1284,19 +1403,24 @@
 
   // 岗位清单：必须与题库里的 6 个岗位名**一字不差** —— 对不上时云端不报错，
   // 只会静默退化成"没有参考题的自由提问"（见 cloud/question_bank.py 的别名表）。
-  var ROLES = ["AI 应用开发", "AI Agent 开发", "大模型算法工程师",
-               "AI/ML Engineer", "Data Scientist", "Data Analyst"];
+  var ROLES = ["AI 应用开发", "智能体开发", "大模型算法工程师",
+               "机器学习工程师", "数据科学家", "数据分析师"];
 
   // 压力档位（2026-10-19）：必须与云端 llm_service.PRESSURE_LEVELS 及
   // skills/next_question.json 的 pressure 键一字不差；默认「标准」。
   var PRESSURES = ["温和", "标准", "压力"];
+
+  // 目标问答轮数（2026-11-01）：报告在第 N+1 次回答后出。演示 5~6 轮，
+  // 正式面试可用 15~30；服务端会夹到 [4,30]。
+  var ROUND_PRESETS = [5, 6, 8, 10, 15, 20, 30];
+  var textRounds = 10;
 
   var textRole = ROLES[0];
   var textPressure = PRESSURES[1];
   var starting = false;
 
   function renderStarter(unfinished) {
-    var i, opts = "", popts = "";
+    var i, opts = "", popts = "", ropts = "";
     for (i = 0; i < ROLES.length; i++) {
       opts += '<option value="' + esc(ROLES[i]) + '">' + esc(ROLES[i]) + "</option>";
     }
@@ -1304,6 +1428,11 @@
       popts += '<option value="' + esc(PRESSURES[i]) + '"' +
                (PRESSURES[i] === "标准" ? " selected" : "") + ">" +
                esc(PRESSURES[i]) + "</option>";
+    }
+    for (i = 0; i < ROUND_PRESETS.length; i++) {
+      ropts += '<option value="' + ROUND_PRESETS[i] + '"' +
+               (ROUND_PRESETS[i] === textRounds ? " selected" : "") + ">" +
+               ROUND_PRESETS[i] + " 轮</option>";
     }
 
     var html = '<div class="starter"><h2>文字演练</h2>' +
@@ -1325,6 +1454,9 @@
 
     html += '<label>面试岗位 <select id="roleSel">' + opts + "</select></label>" +
       '<label>压力档位 <select id="pressureSel">' + popts + "</select></label>" +
+      '<label>面试轮数 <select id="roundsSel">' + ropts + "</select>" +
+        '<span style="margin-left:8px;font-size:12.5px;color:var(--ink-dim)">' +
+        "问答轮数；报告会在第 N+1 次回答后出</span></label>" +
       '<button class="btn" id="startBtn" style="font-size:14px;padding:9px 18px"' +
       (unfinished.length ? " disabled" : "") + ">开始面试</button></div>";
 
@@ -1363,13 +1495,16 @@
     textRole = sel ? sel.value : ROLES[0];
     var psel = document.getElementById("pressureSel");
     textPressure = psel ? psel.value : PRESSURES[1];
+    var rsel = document.getElementById("roundsSel");
+    textRounds = rsel ? parseInt(rsel.value, 10) || 10 : 10;
     // ⚠️ 这里**不用** showPending()：此刻消息区（#main）还是隐藏的（开场页状态），
     //    气泡画出来也看不见。这一下的反馈靠按钮文字 + 状态栏那两条，够了。
     if (btn) { btn.disabled = true; btn.textContent = "正在准备…"; }
     // ⚠️ 即时反馈：这一下要等 LLM（一两秒）。不给任何反馈，用户的感觉就是"卡住了"
     //    —— 这是 2026-10-01 用户报的第一个问题，延迟本身是模型的，不是我们的。
     setStatus("ok", "面试官正在准备…");
-    textPost({ role: textRole, pressure: textPressure, state: "start" })
+    textPost({ role: textRole, pressure: textPressure,
+               target_rounds: textRounds, state: "start" })
       .then(function (d) {
         if (!d.session_id) { throw new Error(d.error || "创建会话失败"); }
         SID = d.session_id;

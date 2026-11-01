@@ -12,6 +12,8 @@ from question_bank import build_reference_block
 from reply_guard import FALLBACK_QUESTION, clean_history, strip_meta
 import interview_stage
 import question_similarity
+import director
+import interview_spec
 import report_guard
 import score_guard
 
@@ -20,12 +22,17 @@ logger = logging.getLogger(__name__)
 # 小米 MIMO API 配置（与 ASR/TTS 统一）
 MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 MIMO_BASE_URL = "https://api.xiaomimimo.com/v1"
-LLM_MODEL = "mimo-v2.5"
+# 2026-11-01：MIMO 下线了 `mimo-v2.5` 这个**对话**模型（只剩 ASR/TTS 变体），
+# 继续用会 400 Unsupported model → 每轮都返回兜底文案"生成问题失败"。
+# 现网可用对话模型：mimo-v2.6-flash / mimo-v2.6-pro / mimo-v2.6-pro-ultraspeed。
+# 默认用 flash（追问/报告够用、延迟低）；可用 LLM_MODEL 环境变量覆盖。
+LLM_MODEL = os.environ.get("LLM_MODEL", "mimo-v2.6-flash")
 
 # 加载 Skills Prompt 模板
 SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
 
-# 面试结束判据：历史累计到 20 条（约 10 轮问答）即收尾。
+# 面试结束判据：默认 10 轮（20 条历史）；2026-11-01 起实际按 2 × target_rounds
+# 动态计算，这个常量只作为"默认 10 轮"的说明与老测试锚点。
 # ⚠️ 两个调用点的 history 长度差 1：next_question() 收到的**不含**本轮回答，
 # llm_interview() 收到的**含**本轮回答，所以后者要先减 1 再比。
 HISTORY_FINISH_THRESHOLD = 20
@@ -36,7 +43,8 @@ HISTORY_FINISH_THRESHOLD = 20
 PRESSURE_LEVELS = ("温和", "标准", "压力")
 DEFAULT_PRESSURE = "标准"
 
-# ⚠️ mimo-v2.5 是**推理模型**：它先产出思考（reasoning_content），且 reasoning_tokens
+# ⚠️ 这些 MIMO 对话模型是**推理模型**（v2.5/v2.6 都一样）：先产出思考
+# （reasoning_content），且 reasoning_tokens
 # 与正文**共用** max_tokens 预算。实测思考会吃掉 300~800 token，而各 skill 的
 # max_tokens 是按"输出额度"配的（600/800），于是历史越长思考越久、正文余量越小：
 #   - 第 10 轮（消息数 21）next_question：reasoning 峰值 801 撞满 800 → 正文 0 token
@@ -44,6 +52,8 @@ DEFAULT_PRESSURE = "标准"
 # 关掉思考后 reasoning_tokens=0，全部预算给正文：实测输出质量无可见下降（追问依旧
 # 自然、报告结构完整），且报告轮从 16 秒降到几秒。这是端云链路上**每一轮**都会走的
 # 咽喉点，所以集中改在这里。若将来换模型，需重新验证该参数是否被支持。
+# 2026-11-01 已在 mimo-v2.6-flash 上复测：该参数有效，reasoning_content 为空，
+# 简单请求约 0.9 秒返回。
 THINKING_DISABLED = {"thinking": {"type": "disabled"}}
 
 
@@ -148,7 +158,8 @@ def start_interview(role: str) -> dict:
 
 
 def next_question(role: str, history: list, last_answer: str,
-                  pressure: str = DEFAULT_PRESSURE) -> dict:
+                  pressure: str = DEFAULT_PRESSURE,
+                  target_rounds: int = interview_stage.DEFAULT_TARGET_ROUNDS) -> dict:
     """
     Skill: next_question — 根据用户回答生成下一个问题或追问
 
@@ -203,7 +214,8 @@ def next_question(role: str, history: list, last_answer: str,
     # ⚠️ 这里收到的 history **不含本轮回答**（llm_interview 传的是 history[:-1]），
     #    长度是 2N-2，所以 +1 才是"端侧第几次按 K1"的那一轮。
     round_number = len(history) // 2 + 1
-    stage = interview_stage.stage_key(round_number)
+    total_rounds = interview_stage.normalize_target(target_rounds)
+    stage = interview_stage.stage_key(round_number, total_rounds)
 
     # ---- 题库参考块 ----
     # ⚠️ **只在技术追问那一段取**：背景深挖问的是他自己的项目，题库帮不上忙，
@@ -297,9 +309,28 @@ def next_question(role: str, history: list, last_answer: str,
     #
     #    这不违反 §11.21 的纪律：那条禁的是参考块进 **history**（模型看见自己过去的
     #    参考题、然后抄），而本轮 user 消息是每轮现拼的、不入库。
+    # 导演环（2026-11-01）：用上一答的字面信号决定"深入/换角度/换主题"。
+    # 纯规则、零额外模型调用；模型只负责把选定的动作写成人话。
+    #
+    # 只看**当前段内**的回答：否则背景深挖的两条实答会让技术追问一开场就
+    # 触发"换主题"（段边界处 streak 应归零）。history 里的 user 消息按轮次
+    # 1..round-1 排列；background 从第 2 轮起、technical 从第 4 轮起。
+    user_answers = [m.get("content", "") for m in history
+                    if isinstance(m, dict) and m.get("role") == "user"]
+    stage_start = next((first for key, first, _ in
+                        interview_stage.plan_for(total_rounds) if key == stage), None)
+    if stage_start:
+        user_answers = user_answers[stage_start - 1:]
+    recent_answers = user_answers[-3:]
+    director_hint = director.hint(stage, pressure, last_answer, recent_answers)
+    if director_hint:
+        logger.info("[导演] 第 %d 轮：%s", round_number, director_hint)
+
     parts = [f"候选人回答：{last_answer}"]
     if stage_brief:
         parts.append(f"【本轮是第 {round_number} 轮 · {stage_name}】{stage_brief}")
+    if director_hint:
+        parts.append(director_hint)
     if pressure_block:
         # 一行提醒（规则正文在 system prompt）—— 离"下一句要写什么"最近的位置。
         parts.append(f"【本场压力档位：{pressure}】")
@@ -320,7 +351,7 @@ def next_question(role: str, history: list, last_answer: str,
     )
 
     # 判断是否结束面试（超过 10 轮）
-    next_action = "finish" if len(history) >= HISTORY_FINISH_THRESHOLD else "continue"
+    next_action = "finish" if len(history) >= 2 * total_rounds else "continue"
 
     if result:
         # 出去的字也要过闸：这段文本会被 TTS **逐字念出来**，绝不能带「判断：/理由：/---」。
@@ -431,7 +462,9 @@ def generate_feedback(role: str, history: list) -> dict:
     if not skill:
         return {"text": "生成报告失败", "next_action": "finish"}
 
-    system_prompt = skill["system_prompt"].replace("{role}", role)
+    system_prompt = (skill["system_prompt"]
+                     .replace("{role}", role)
+                     .replace("{dimensions}", interview_spec.DIMENSION_TEXT))
 
     # 构建对话摘要
     conversation = "\n".join([f"{'面试官' if m['role'] == 'assistant' else '候选人'}：{m['content']}" for m in history])
@@ -496,13 +529,12 @@ def generate_feedback(role: str, history: list) -> dict:
 
 
 def _dimensions_block() -> str:
-    """把 `score_guard.DIMENSIONS` 拼成提示词里的维度清单。
+    """把 `interview_spec.DIMENSION_NAMES` 拼成提示词里的维度清单。
 
-    维度**只有这一个来源**：提示词模板里不写死，就不会出现"提示词要 5 个维度、
-    代码只认 4 个"的漂移 —— 这正是 `score_guard` 把 DIMENSIONS 定成"唯一事实来源"
-    时留下的约定（见它的模块 docstring）。
+    维度**只有这一个来源**（`cloud/interview_spec.py`）：提示词模板里不写死，
+    就不会出现"提示词要 5 个维度、代码只认 4 个"的漂移。
     """
-    return "\n".join(f"· {name}" for name in score_guard.DIMENSIONS)
+    return "\n".join(f"· {name}" for name in interview_spec.DIMENSION_NAMES)
 
 
 def _qa_pairs(history) -> list:
@@ -625,13 +657,45 @@ def score_interview(role: str, history: list) -> dict:
                        str(parsed.get("dimensions"))[:120])
         return {}
 
-    # 软核对：每个维度的"依据"是不是真出自候选人。**只记日志、不拦**（同
-    # report_guard 的取舍）—— 评分已经过闸门、结构可信，"未提及"这类诚实回答
-    # 由 verify_evidence 自己跳过；剩下来的措辞出入不值得丢掉整份评分。
+    # 证据核对（2026-11-01 从 myagent 的"逐字原话"思路拿过来）：
+    # 先软核对；有对不上的**只重试一次**，把这几项 evidence 改成逐字原话。
+    # 只在报告阶段发生，不在对话关键路径上；重试仍对不上就如实标记 partial，
+    # 不丢弃整份评分（评分结构本身仍可信）。
     unsupported = score_guard.verify_evidence(score, history)
     if unsupported:
-        logger.info("[评分] %d 个维度的依据未能与候选人原话对上（仅供参考）：%s",
+        logger.info("[评分] %d 个维度的依据未能与候选人原话对上，重试一次：%s",
                     len(unsupported), unsupported)
+        retry_messages = messages + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": (
+                "上面这份评分里，以下维度的 evidence 没有逐字对上候选人的原话："
+                + "、".join(unsupported)
+                + "。请重新输出完整 JSON：只把这几个维度的 evidence 改成候选人"
+                  "回答里的**逐字原话**（不改写、不拼接、不加解释），其余字段保持原样。")},
+        ]
+        raw_retry = call_llm(
+            system_prompt=system_prompt,
+            messages=retry_messages,
+            temperature=skill.get("temperature", 0.3),
+            max_tokens=skill.get("max_tokens", 800)
+        )
+        if raw_retry:
+            parsed_retry = score_guard.extract_json(raw_retry)
+            score_retry = (score_guard.normalize(parsed_retry)
+                           if parsed_retry is not None else {})
+            if score_guard.is_usable(score_retry):
+                bad_retry = score_guard.verify_evidence(score_retry, history)
+                if len(bad_retry) < len(unsupported):
+                    score, unsupported = score_retry, bad_retry
+                    logger.info("[评分] 重试后未对上维度降到 %d 个", len(unsupported))
+                else:
+                    logger.info("[评分] 重试后仍未改善（%d 个），保留首份评分",
+                                len(bad_retry))
+        if unsupported:
+            logger.warning("[评分] 仍有 %d 个维度的依据不是逐字原话：%s",
+                           len(unsupported), unsupported)
+    score["evidence_status"] = "ok" if not unsupported else "partial"
+    score["evidence_unmatched"] = unsupported
 
     # 逐题复盘：按题号把题目文本挂上去（越界题号在这里丢掉，闸门不知道有几题）
     score["per_question"] = _attach_questions(score.get("per_question"), pairs)
@@ -699,7 +763,8 @@ def _finish_requested(history: list) -> str:
 
 
 def llm_interview(role: str, history: list, state: str, audio_base64: str = "",
-                  pressure: str = DEFAULT_PRESSURE) -> dict:
+                  pressure: str = DEFAULT_PRESSURE,
+                  target_rounds: int = interview_stage.DEFAULT_TARGET_ROUNDS) -> dict:
     """
     兼容旧版接口（已被 skill 函数替代）
     """
@@ -728,12 +793,18 @@ def llm_interview(role: str, history: list, state: str, audio_base64: str = "",
             # 少一条（不含本轮回答），放那儿就得再算一次下标，正是这类错位的高发地。
             # 端侧协议零变化：next_action 本来就是 continue/finish 两个值。
             finish_reason = _finish_requested(history)
-            if len(history) - 1 >= HISTORY_FINISH_THRESHOLD or finish_reason:
+            total_rounds = interview_stage.normalize_target(target_rounds)
+            # 目标问答轮数 N → 第 N+1 次 K1 出报告：此时 history 里已有 2N 条
+            # （N 个问答对），`len-1 >= 2N` 就是"第 N+1 次提交"。
+            if len(history) - 1 >= 2 * total_rounds or finish_reason:
                 if finish_reason:
                     logger.info(f"[结束] 候选人请求结束面试（命中 {finish_reason!r}，"
                                 f"实际轮次 {len(history) // 2}），提前生成报告")
+                else:
+                    logger.info(f"[结束] 到达目标轮数 {total_rounds}，生成报告")
                 return generate_feedback(role, history)
-            return next_question(role, history[:-1], history[-1]["content"], pressure)
+            return next_question(role, history[:-1], history[-1]["content"], pressure,
+                                 total_rounds)
 
     return start_interview(role)
 

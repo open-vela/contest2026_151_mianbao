@@ -114,6 +114,35 @@ class TestScoreInterview(unittest.TestCase):
         with mock.patch.object(llm_service, "load_skill", return_value={}):
             self.assertEqual(llm_service.score_interview("AI 应用开发", list(HISTORY)), {})
 
+    def test_evidence_retry_once_on_paraphrase(self):
+        """evidence 不是逐字原话 → 重试一次，改对后标 ok。"""
+        bad = json.loads(GOOD_JSON)
+        bad["dimensions"][0]["evidence"] = "负责检索模块"   # 历史里没有这句
+        bad_raw = json.dumps(bad, ensure_ascii=False)
+        with mock.patch.object(llm_service, "call_llm",
+                               side_effect=[bad_raw, GOOD_JSON]) as patched:
+            score = llm_service.score_interview("AI 应用开发", list(HISTORY))
+        self.assertEqual(patched.call_count, 2)
+        self.assertEqual(score["evidence_status"], "ok")
+        self.assertEqual(score["evidence_unmatched"], [])
+
+    def test_evidence_retry_still_partial_keeps_score(self):
+        """重试仍对不上 → 保留评分，但标 partial（不丢整份报告）。"""
+        bad = json.loads(GOOD_JSON)
+        bad["dimensions"][0]["evidence"] = "负责检索模块"
+        bad_raw = json.dumps(bad, ensure_ascii=False)
+        with mock.patch.object(llm_service, "call_llm",
+                               side_effect=[bad_raw, bad_raw]) as patched:
+            score = llm_service.score_interview("AI 应用开发", list(HISTORY))
+        self.assertEqual(patched.call_count, 2)
+        self.assertEqual(score["evidence_status"], "partial")
+        self.assertIn("技术正确性", score["evidence_unmatched"])
+
+    def test_no_retry_when_evidence_is_verbatim(self):
+        score, patched = self.call(GOOD_JSON)
+        self.assertEqual(patched.call_count, 1)
+        self.assertEqual(score["evidence_status"], "ok")
+
 
 class TestStartScoring(ScoringTestCase):
     """`_start_scoring` 的接线：线程里评完要写进会话、并落一份带评分的存档。"""
@@ -489,6 +518,47 @@ class TestAskBackFallback(unittest.TestCase):
         """兜底只在反问那一轮生效 —— 别把技术轮的正常追问也换掉。"""
         reply = "那你们线上有没有做答案质量的监控？"
         self.assertEqual(self.run_round(5, reply)["text"], reply)
+
+
+class TestTargetRounds(unittest.TestCase):
+    """目标轮数（2026-11-01）：第 N+1 次回答后出报告，默认 10 行为不变。"""
+
+    @staticmethod
+    def history(pairs, current="这是本轮回答"):
+        rows = []
+        for i in range(pairs):
+            rows.append({"role": "assistant", "content": f"问题 {i + 1}"})
+            rows.append({"role": "user", "content": f"回答 {i + 1}"})
+        rows.append({"role": "user", "content": current})
+        return rows
+
+    def run_round(self, pairs, target_rounds=None):
+        kwargs = {"target_rounds": target_rounds} if target_rounds is not None else {}
+        with mock.patch.object(llm_service, "generate_feedback",
+                               return_value={"text": "报告", "next_action": "finish"}) as gf, \
+             mock.patch.object(llm_service, "next_question",
+                               return_value={"text": "下一问", "next_action": "continue"}) as nq:
+            out = llm_service.llm_interview("AI 应用开发", self.history(pairs),
+                                            "recording_finished", **kwargs)
+        return out, gf, nq
+
+    def test_target_6_reports_after_6th_answer(self):
+        out, gf, nq = self.run_round(6, target_rounds=6)
+        self.assertEqual(out["next_action"], "finish")
+        gf.assert_called_once()
+        nq.assert_not_called()
+
+    def test_target_6_continues_after_5th_answer(self):
+        out, gf, nq = self.run_round(5, target_rounds=6)
+        self.assertEqual(out["next_action"], "continue")
+        nq.assert_called_once()
+        gf.assert_not_called()
+
+    def test_default_target_10_is_unchanged(self):
+        out, gf, nq = self.run_round(10)
+        self.assertEqual(out["next_action"], "finish")
+        gf.assert_called_once()
+        nq.assert_not_called()
 
 
 if __name__ == "__main__":

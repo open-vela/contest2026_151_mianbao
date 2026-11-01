@@ -264,6 +264,13 @@ void audio_set_volume(int percent)
      * codec_configure 带进去（那是每轮录音都会走的路）。 */
     (void)snd_ctl_set(AI_CODEC_CARD, "DACL digital volume", g_dac_volume);
     (void)snd_ctl_set(AI_CODEC_CARD, "DACR digital volume", g_dac_volume);
+
+    /* 播放增益也在这里统一设置一次（2026-10-31）：之前 HPOUT gain 只在
+     * codec_configure 里设，而 codec_configure 是**第一次录音**才跑的 ——
+     * 于是开场白（录音之前播放）用的是 codec 默认增益，比后面的回应小声，
+     * 用户听到"第一句小、突然变大"。 */
+    (void)snd_ctl_set(AI_CODEC_CARD, "HPOUT gain volume", 7);
+
     printf("[Audio] 音量设为 %d%%（DAC %u/255）\n", percent, g_dac_volume);
 }
 
@@ -536,6 +543,13 @@ ai_play_result_t audio_play_wav(const uint8_t *wav, size_t len,
     }
 
     frame_bytes = channels * (bits / 8);
+
+    /* 每次播放前统一播放增益与 DAC 音量。
+     * 开场白在第一次录音之前播放，此刻 codec_configure 还没跑过；不补这一步，
+     * HPOUT 还是默认增益，听起来比后面的正式回应小声（2026-10-31 用户实测）。 */
+    (void)snd_ctl_set(AI_CODEC_CARD, "HPOUT gain volume", 7);
+    (void)snd_ctl_set(AI_CODEC_CARD, "DACL digital volume", g_dac_volume);
+    (void)snd_ctl_set(AI_CODEC_CARD, "DACR digital volume", g_dac_volume);
 
     rc = snd_vela_pcm_open(&handle, AI_PCM_DEVICE,
                            SND_VELA_PCM_STREAM_PLAYBACK, 0);

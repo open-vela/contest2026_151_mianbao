@@ -51,6 +51,24 @@ DIRTY_WITH_NEXT_STEP_EXPECTED = (
     "在这个过程中，您主导过哪些比较有挑战性的项目？"
 )
 
+# 2026-11-01 真机会话 5977ce93 抓到的**推演型**脏输出（节选，保留关键结构）：
+# 没有「判断：/理由：」行首标签，但整段是模型的内部思考（字数控制/数一下字数/
+# 这段算点破空话吗…），最后才把真正要问的那句写在「」里。
+DIRTY_REASONING = (
+    "候选人的回答很空，「按照一套标准来实行」「固定的词提取」没有具体信息，"
+    "且偏离了上一问（打分标准、评测集大小、采纳率）。按压力档要求，直接点破空话并追问，"
+    "同时贴着他的项目往工具调用/多步编排方向切。\n\n"
+    "字数控制在120字内，一段连续文字，一个问题结尾。\n\n"
+    "「固定提示词筛评论、抽字段、打分，这三步是串行编排的，中间某一步抽取失败或字段缺失，"
+    "你的编排逻辑怎么处理，有没有重试或降级？」\n\n"
+    "数一下字数：约60字，OK。这段算点破空话吗？他没直接回答打分标准和评测集，"
+    "我换了个角度问失败恢复，符合「换一种问法」且贴着项目。"
+)
+DIRTY_REASONING_EXPECTED = (
+    "固定提示词筛评论、抽字段、打分，这三步是串行编排的，中间某一步抽取失败或字段缺失，"
+    "你的编排逻辑怎么处理，有没有重试或降级？"
+)
+
 
 class TestCleanTextIsUntouched(unittest.TestCase):
     """干净文本零改动 —— 这条最关键：闸门不能去动正常回复的语气。"""
@@ -67,6 +85,11 @@ class TestCleanTextIsUntouched(unittest.TestCase):
         text = "请简单介绍一下你自己。"
         self.assertEqual(strip_meta(text), text)
 
+    def test_normal_question_with_can_is_untouched(self):
+        """「可以」不是推演标记，正常问句不能被误伤。"""
+        text = "您刚才说召回率 92%，这个数怎么测的？可以具体说说测试集吗？"
+        self.assertEqual(strip_meta(text), text)
+
     def test_english_question(self):
         text = "Can you walk me through your RAG pipeline?"
         self.assertEqual(strip_meta(text), text)
@@ -78,6 +101,13 @@ class TestDirtyOutputIsCleaned(unittest.TestCase):
         self.assertEqual(out, "您在企业服务公司这五年，主要负责哪条产品线？"
                               "能举一个您主导的产品例子吗？")
         self.assertTrue(out.endswith("？"))
+
+    def test_reasoning_leak_salvages_the_quoted_question(self):
+        """推演型脏输出：只保留「」里的最终问句，不能把思考过程念出来。"""
+        out = strip_meta(DIRTY_REASONING)
+        self.assertEqual(out, DIRTY_REASONING_EXPECTED)
+        self.assertNotIn("字数控制", out)
+        self.assertNotIn("这段算点破", out)
 
     def test_reasoning_paragraph_without_label_is_dropped(self):
         """真实脏输出的"理由"正文是**独立一段**、没有标签，靠"不含问句的块不念"丢掉。"""

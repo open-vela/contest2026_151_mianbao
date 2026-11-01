@@ -68,6 +68,46 @@ class TestStagePlan(unittest.TestCase):
                 self.assertIsNone(interview_stage.stage_key(bad))
 
 
+class TestDynamicRounds(unittest.TestCase):
+    """目标轮数（2026-11-01）：演示 5~6 轮、正式数十轮。"""
+
+    def test_normalize_target(self):
+        self.assertEqual(interview_stage.normalize_target(6), 6)
+        self.assertEqual(interview_stage.normalize_target("8"), 8)
+        self.assertEqual(interview_stage.normalize_target(2),
+                         interview_stage.MIN_TARGET_ROUNDS)
+        self.assertEqual(interview_stage.normalize_target(99),
+                         interview_stage.MAX_TARGET_ROUNDS)
+        for bad in (None, True, 1.5, "abc", [], {}):
+            with self.subTest(value=bad):
+                self.assertEqual(interview_stage.normalize_target(bad),
+                                 interview_stage.DEFAULT_TARGET_ROUNDS)
+
+    def test_default_plan_is_unchanged(self):
+        self.assertEqual(interview_stage.plan_for(10), interview_stage.STAGE_PLAN)
+
+    def test_five_six_round_plan(self):
+        self.assertEqual(interview_stage.stage_key(1, 6), "opening")
+        self.assertEqual(interview_stage.stage_key(2, 6), "background")
+        for n in (3, 4, 5):
+            self.assertEqual(interview_stage.stage_key(n, 6), "technical")
+        self.assertEqual(interview_stage.stage_key(6, 6), "ask_back")
+        self.assertIsNone(interview_stage.stage_key(7, 6))
+
+    def test_every_plan_is_continuous(self):
+        for total in range(interview_stage.MIN_TARGET_ROUNDS,
+                           interview_stage.MAX_TARGET_ROUNDS + 1):
+            plan = interview_stage.plan_for(total)
+            covered = []
+            for _, first, last in plan:
+                self.assertLessEqual(first, last)
+                covered.extend(range(first, last + 1))
+            self.assertEqual(sorted(covered), list(range(1, total + 1)),
+                             f"{total} 轮的段表有空洞/重叠")
+            self.assertTrue(any(key == "technical" for key, _, _ in plan),
+                            f"{total} 轮没有技术追问段")
+
+
 class TestQuestionBankUsage(unittest.TestCase):
     def test_只有技术追问那一段用题库(self):
         """背景深挖问的是他自己的项目，题库帮不上忙；注进去只会把话题从他自己的

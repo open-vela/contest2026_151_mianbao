@@ -96,16 +96,16 @@ ROLE_ALIASES = {
     # ---- 短键必须显式列在这里 ----
     # 为什么：`normalize_role` 的第 ③ 步是**双向包含取最长**，对 2~3 个字的短键
     # 来说那等于"谁的名字最长就归谁"，结果反直觉且没人会去查：
-    #   "AI"   → 命中 `AI/ML Engineer`（因为它比 `AI 应用开发` 长）
+    #   "AI"   → 命中 `机器学习工程师`（因为它比 `AI 应用开发` 长）
     #   "算法" → 命中 `大模型算法工程师`（碰巧是对的，但靠的是包含关系）
-    #   "ML"   → 命中 `AI/ML Engineer`（碰巧是对的）
+    #   "ML"   → 命中 `机器学习工程师`（碰巧是对的）
     # 显式写进别名表，行为就变成可读、可测、可预期的一行。
     # 注意别名表在第 ③ 步**之前**生效（见 normalize_role 的四步），所以这些条目
     # 一定赢过包含匹配。
     "ai": "AI 应用开发",              # 中文语境下裸 "AI" 指应用方向，不是英文岗
     "算法": "大模型算法工程师",
-    "ml": "AI/ML Engineer",
-    "agent": "AI Agent 开发",
+    "ml": "机器学习工程师",
+    "agent": "智能体开发",
     # AI 应用开发（本次演示岗位）
     "ai开发": "AI 应用开发",
     "ai应用": "AI 应用开发",
@@ -113,28 +113,33 @@ ROLE_ALIASES = {
     "应用开发工程师": "AI 应用开发",
     "ai工程师": "AI 应用开发",
     "大模型应用开发": "AI 应用开发",
-    # AI Agent 开发
-    "agent开发": "AI Agent 开发",
-    "aiagent": "AI Agent 开发",
-    "aiagent工程师": "AI Agent 开发",
-    "智能体开发": "AI Agent 开发",
-    "智能体工程师": "AI Agent 开发",
+    # 智能体开发（原 AI Agent 开发）
+    "agent开发": "智能体开发",
+    "aiagent": "智能体开发",
+    "aiagent工程师": "智能体开发",
+    "智能体开发": "智能体开发",
+    "智能体工程师": "智能体开发",
+    "智能体": "智能体开发",
+    "aiagent开发": "智能体开发",
     # 大模型算法工程师
     "大模型算法": "大模型算法工程师",
     "算法工程师": "大模型算法工程师",
     "llm算法工程师": "大模型算法工程师",
     "大模型工程师": "大模型算法工程师",
-    # 英文侧（ai_questions.json 的三个岗位）
-    "aimlengineer": "AI/ML Engineer",
-    "ai/ml": "AI/ML Engineer",
-    "mlengineer": "AI/ML Engineer",
-    "machinelearningengineer": "AI/ML Engineer",
-    "机器学习工程师": "AI/ML Engineer",
-    "datascientist": "Data Scientist",
-    "数据科学家": "Data Scientist",
-    "dataanalyst": "Data Analyst",
-    "数据分析师": "Data Analyst",
-    "数据分析": "Data Analyst",
+    # 英文侧（ai_questions.json 的三个岗位）—— 旧英文名继续可用，映射到中文岗位
+    "aimlengineer": "机器学习工程师",
+    "ai/mlengineer": "机器学习工程师",   # "AI/ML Engineer" 去空格后的形态
+    "ai/ml": "机器学习工程师",
+    "mlengineer": "机器学习工程师",
+    "machinelearningengineer": "机器学习工程师",
+    "机器学习工程师": "机器学习工程师",
+    "机器学习": "机器学习工程师",
+    "datascientist": "数据科学家",
+    "数据科学家": "数据科学家",
+    "数据科学": "数据科学家",
+    "dataanalyst": "数据分析师",
+    "数据分析师": "数据分析师",
+    "数据分析": "数据分析师",
 }
 
 _BANK_LOCK = threading.Lock()

@@ -9,6 +9,9 @@
  *   2) /data/ai_interview_wifi（两行：SSID、密码）。用环境变量成功启动过一次
  *      之后会自动写回，下次开机不用再设。
  *
+ * 2026-10-31 起，首次开机若没有凭据，主程序会在串口提示输入（见
+ * wifi_serial_setup）；板子开机自动运行主程序，用户不必先敲 ai_interview。
+ *
  * ⚠️ 仓库里**不写死任何热点凭据**（密码不进 git）；设备上的文件是明文，
  *    这是嵌入式设备的常规取舍，演示前请知悉。
  */
@@ -35,9 +38,20 @@ int wifi_connect_boot(void);
 int wifi_have_creds(void);
 
 /*
- * 保存凭据到 /data/ai_interview_wifi（屏幕配网页用）。
+ * 保存凭据到 /data/ai_interview_wifi（屏幕配网页 / 串口配置用）。
  * 返回 0 成功，-1 写入失败，-2 凭据不合法（空/含不支持字符）。
  */
 int wifi_save_creds(const char *ssid, const char *psk);
+
+/*
+ * 串口首次配置（2026-10-31）。
+ *
+ * 没有凭据时在启动阶段直接读串口：提示输入热点名称与密码，校验后保存到
+ * /data/ai_interview_wifi。密码输入时关闭回显。
+ *
+ * 只允许**主线程、工作线程启动前**调用（会阻塞等待输入）。
+ * 返回 0 = 已保存；-1 = 跳过/输入失败/标准输入不是终端。
+ */
+int wifi_serial_setup(void);
 
 #endif /* __WIFI_CONNECT_H__ */

@@ -17,6 +17,7 @@ from speech_metrics import speech_metrics
 from growth import build_growth
 from session_manager import SessionManager
 from question_bank import warmup as warmup_question_bank
+import interview_stage
 import report_export
 import session_store
 import user_store
@@ -210,6 +211,8 @@ def handle_interview():
         pressure = data.get('pressure')
         if pressure not in PRESSURE_LEVELS:
             pressure = DEFAULT_PRESSURE
+        # 目标问答轮数（2026-11-01）：建会话时钉住；旧客户端不带 → 默认 10。
+        target_rounds = interview_stage.normalize_target(data.get('target_rounds'))
         state = data.get('state', '')
         history = data.get('history', [])
 
@@ -219,7 +222,8 @@ def handle_interview():
 
         # 获取或创建会话（压力档位同 role：建会话时钉住）
         is_new = session_manager.get_session(session_id) is None
-        session = session_manager.get_or_create_session(session_id, role, pressure)
+        session = session_manager.get_or_create_session(session_id, role, pressure,
+                                                        target_rounds)
         # 账号归属：只在新会话上写一次（中途换账号不改已有场次）。
         if is_new:
             user = _user_from_request(data)
@@ -272,9 +276,9 @@ def handle_interview():
                 logger.info(f"[session={session_id}] 空识别 -> 短路回复：{reply}")
                 # ⚠️ 这一句**刻意不写进历史**（原先是 add_ai_message）。
                 # 它没有对应的 user 消息，塞进去会让历史变成奇数条，而报告判据是
-                # `len(history) - 1 >= 20`（llm_service.HISTORY_FINISH_THRESHOLD）
-                # —— 一次静音轮就把报告从第 11 次 K1 推迟到第 12 次，而 README
-                # 和演示脚本都写死"第 11 次出报告"。静音不是一段对话，不该进记录。
+                # `len(history) - 1 >= 2 × target_rounds`（默认 10 轮 = 20 条）
+                # —— 一次静音轮就把报告推迟一次 K1，而演示脚本按"第 N+1 次出报告"
+                # 排练。静音不是一段对话，不该进记录。
                 # 语音照常播（TTS 在下）、响应照常返回，只是不留痕。
                 return jsonify({
                     "type": "question",
@@ -290,7 +294,7 @@ def handle_interview():
         # 调用 LLM 生成回复
         logger.info(f"[session={session_id}] 调用 LLM...")
         llm_result = llm_interview(role, session.get_history(), state, audio_base64,
-                                   session.pressure)
+                                   session.pressure, session.target_rounds)
         ai_text = llm_result.get('text', '')
         next_action = llm_result.get('next_action', 'continue')
 
@@ -373,6 +377,7 @@ def handle_interview_text():
     pressure = data.get("pressure")
     if pressure not in PRESSURE_LEVELS:
         pressure = DEFAULT_PRESSURE
+    target_rounds = interview_stage.normalize_target(data.get("target_rounds"))
     state = data.get("state") or "recording_finished"
     answer = (data.get("text") or "").strip()
     session_id = data.get("session_id") or ""
@@ -383,7 +388,8 @@ def handle_interview_text():
     acquired = False
     try:
         is_new = session_manager.get_session(session_id) is None
-        session = session_manager.get_or_create_session(session_id, role, pressure)
+        session = session_manager.get_or_create_session(session_id, role, pressure,
+                                                        target_rounds)
         if is_new:
             user = _user_from_request(data)
             session.user_id = user.get("id", "") if user else ""
@@ -409,7 +415,8 @@ def handle_interview_text():
 
         if state == "start":
             result = llm_interview(role, session.get_history(), "start",
-                                   pressure=session.pressure)
+                                   pressure=session.pressure,
+                                   target_rounds=session.target_rounds)
         else:
             if not answer:
                 return jsonify({"error": "文本不能为空"}), 400
@@ -421,7 +428,8 @@ def handle_interview_text():
             except Exception as metrics_error:   # noqa: BLE001
                 logger.warning(f"[表达] 指标计算失败（不影响演练）：{metrics_error}")
             result = llm_interview(role, session.get_history(), state,
-                                   pressure=session.pressure)
+                                   pressure=session.pressure,
+                                   target_rounds=session.target_rounds)
 
         ai_text = result.get("text", "")
         next_action = result.get("next_action", "continue")

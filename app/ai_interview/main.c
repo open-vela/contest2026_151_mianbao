@@ -24,6 +24,10 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <sys/select.h>
 #include <sys/ioctl.h>
 #include <nuttx/ioexpander/gpio.h>
 
@@ -151,6 +155,81 @@ static void save_volume_pref(void)
     }
     fprintf(fp, "%d\n", g_volume_pct);
     fclose(fp);
+}
+
+/* ---- 目标问答轮数（2026-11-01）----
+ * 演示 5~6 轮、正式面试数十轮。待机页左上角点按切换预设；断电记住。
+ * 值随每次面试请求上报，云端**建会话时钉住** —— 中途改只影响下一场。 */
+#define ROUNDS_PREF_PATH "/data/ai_interview_rounds"
+static const int g_round_presets[] = { 5, 6, 8, 10, 15, 20, 30 };
+#define ROUND_PRESET_COUNT ((int)(sizeof(g_round_presets) / sizeof(g_round_presets[0])))
+
+static int g_target_rounds = 10;
+
+static int rounds_valid(int value)
+{
+    return value >= 4 && value <= 30;
+}
+
+static void load_rounds_pref(void)
+{
+    FILE *fp = fopen(ROUNDS_PREF_PATH, "r");
+    int value;
+
+    if (fp == NULL) {
+        return;
+    }
+    if (fscanf(fp, "%d", &value) == 1 && rounds_valid(value)) {
+        g_target_rounds = value;
+        printf("[Main] 面试轮数：%d（读自 %s）\n",
+               g_target_rounds, ROUNDS_PREF_PATH);
+    }
+    fclose(fp);
+}
+
+static void save_rounds_pref(void)
+{
+    FILE *fp = fopen(ROUNDS_PREF_PATH, "w");
+
+    if (fp == NULL) {
+        printf("[Main] 警告: 轮数偏好写不进去（%s）—— 本次有效\n",
+               ROUNDS_PREF_PATH);
+        return;
+    }
+    fprintf(fp, "%d\n", g_target_rounds);
+    fclose(fp);
+}
+
+/* 待机页「− 轮数：10 +」：在预设表里往前/往后走一格（边界处不动）。 */
+static void app_rounds_step(int delta)
+{
+    int i;
+    int idx = 0;
+    int best = -1;
+
+    /* 当前值不一定正好是预设（例如串口写了 7）—— 先找最近的预设。 */
+    for (i = 0; i < ROUND_PRESET_COUNT; i++) {
+        int diff = g_round_presets[i] - g_target_rounds;
+        int dist = (diff < 0) ? -diff : diff;
+
+        if (best < 0 || dist < best) {
+            best = dist;
+            idx = i;
+        }
+    }
+
+    if (delta < 0 && idx > 0) {
+        idx--;
+    } else if (delta > 0 && idx < ROUND_PRESET_COUNT - 1) {
+        idx++;
+    }
+
+    g_target_rounds = g_round_presets[idx];
+    save_rounds_pref();
+    cloud_set_target_rounds(g_target_rounds);
+    interview_ui_set_rounds(g_target_rounds);
+    printf("[Main] 面试轮数：%d（报告在第 %d 次回答后出；下一场生效）\n",
+           g_target_rounds, g_target_rounds + 1);
 }
 
 /* ---- 账号 token（2026-10-27）----
@@ -480,13 +559,8 @@ static void *pipeline_worker(void *arg)
      * 远不够。cloud_init 也放这里，避免主线程先初始化造成竞争。 */
     cloud_init();
 
-    /* 开机自动联网（2026-10-27）：板子断电后不会自动连回热点，这里替用户
-     * 敲那串 wapi 命令。**失败不阻塞**——云端健康检查会给出真实结果，
-     * 没有 Wi-Fi 时面试照常进入"云端不可达"的可读错误路径。 */
-    printf("[Main] 检查 Wi-Fi（自动联网）...\n");
-    if (wifi_connect_boot() != 0) {
-        printf("[Main] 提示: 自动联网未完成，将按当前网络继续\n");
-    }
+    /* 联网已由主线程在创建工作线程之前完成（见 main()）：
+     * 驱动初始化里的 mallinfo() 不能与其它线程的分配并发。 */
 
     printf("[Main] 云端健康检查...\n");
     if (cloud_health_check() != CLOUD_OK) {
@@ -785,12 +859,132 @@ static void check_buttons(void)
  * 悬案（从 9/18 挂到 9/30）之所以拖了那么久，就是因为唯一能回答它的那行打印
  * 被串口吞了，最后只能靠阴性对照法绕出来。判据必须可靠，所以它由主线程打印。
  */
+static int g_cloud_url_from_file;
+
 static const char *cloud_url_source(void)
 {
     const char *env = getenv("CLOUD_URL");
 
-    return app_url_is_valid(env) ? "环境变量 CLOUD_URL（运行期覆盖生效）"
-                                 : "编译期默认值（CLOUD_URL 未设或不合法）";
+    if (!app_url_is_valid(env)) {
+        return "编译期默认值（CLOUD_URL 未设或不合法）";
+    }
+
+    return g_cloud_url_from_file ? "/data/ai_interview_cloud 文件"
+                                 : "环境变量 CLOUD_URL（运行期覆盖生效）";
+}
+
+/*
+ * 自动化演示时改云端地址，不必再进 nsh：把地址写在
+ * /data/ai_interview_cloud（一行）里即可。启动时读进环境变量，
+ * 后面的 app_cloud_base_url() 照常走环境变量这条路径。
+ */
+static void load_cloud_url_file(void)
+{
+    FILE *fp;
+    char line[128];
+    char *p;
+    size_t len;
+
+    fp = fopen("/data/ai_interview_cloud", "r");
+    if (fp == NULL) {
+        return;
+    }
+
+    if (fgets(line, sizeof(line), fp) != NULL) {
+        p = line;
+        while (*p == ' ' || *p == '\t') {
+            p++;
+        }
+        len = strlen(p);
+        while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r' ||
+                           p[len - 1] == ' ' || p[len - 1] == '\t')) {
+            p[--len] = '\0';
+        }
+
+        if (app_url_is_valid(p)) {
+            setenv("CLOUD_URL", p, 1);
+            g_cloud_url_from_file = 1;
+        } else {
+            printf("[Cloud] /data/ai_interview_cloud 里的地址不合法，忽略\n");
+        }
+    }
+
+    fclose(fp);
+}
+
+/*
+ * 串口逃逸（2026-10-31）：主循环里非阻塞看 stdin，输入 `nsh` 回车就进命令行。
+ *
+ * 为什么不在开机时抢读 stdin：用户看到配网提示会立刻开始输入 SSID，任何
+ * "按回车进 shell"的窗口都会吞字符（真机踩过）。这里只在配网完成后的主循环里
+ * 检查，且用零超时 select，不阻塞、不影响正常输入。
+ *
+ * ⚠️ 实际起的是 `sh`（精简 shell），不是完整 `nsh`：本板 CONFIG_NSH_NETINIT=y，
+ * 完整 nsh 会跑 nsh_initialize → rcS + netinit_bringup，把 wlan0 的 DHCP 地址
+ * 重新初始化掉（真机：进 nsh 后 Wi-Fi 变 0.0.0.0）。`sh` 只建 console 跑
+ * nsh_session，不碰网络初始化；ifconfig / wapi / rm 仍可用。
+ */
+static void check_serial_shell(void)
+{
+    fd_set rfds;
+    struct timeval tv;
+    char line[32];
+    char *p;
+    size_t len;
+    ssize_t n;
+    pid_t pid;
+    int status;
+
+    FD_ZERO(&rfds);
+    FD_SET(STDIN_FILENO, &rfds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+
+    if (select(STDIN_FILENO + 1, &rfds, NULL, NULL, &tv) <= 0) {
+        return;
+    }
+
+    n = read(STDIN_FILENO, line, sizeof(line) - 1);
+    if (n <= 0) {
+        return;
+    }
+    line[n] = '\0';
+
+    p = line;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    len = strlen(p);
+    while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r' ||
+                       p[len - 1] == ' ' || p[len - 1] == '\t')) {
+        p[--len] = '\0';
+    }
+
+    if (strcmp(p, "nsh") != 0 && strcmp(p, "sh") != 0) {
+        return;     /* 其它输入忽略，不占用串口 */
+    }
+
+    printf("\n[Main] 进入命令行（exit 返回主程序）...\n");
+    fflush(stdout);
+
+    {
+        /* ⚠️ 必须起 `sh`，不能起 `nsh`（2026-11-01 真机）：
+         * 本板 CONFIG_NSH_NETINIT=y，完整 nsh 在 nsh_initialize() 里会跑
+         * rcS + netinit_bringup()，把 wlan0 的 DHCP 地址重新初始化掉
+         * （进 nsh 后 ifconfig 变成 inet 0.0.0.0 / 网关 10.0.0.1，Wi-Fi 断）。
+         * `sh` 走 nsh_system_ctty()，只建 console + nsh_session，不跑
+         * nsh_initialize/rcS/netinit；ifconfig、wapi、rm 这些内置命令照样能用。 */
+        char *argv[] = { (char *)"sh", NULL };
+
+        if (posix_spawn(&pid, "sh", NULL, NULL, argv, NULL) == 0) {
+            waitpid(pid, &status, 0);
+        } else {
+            printf("[Main] 启动 sh 失败\n");
+        }
+    }
+
+    printf("\n[Main] 已返回主程序\n");
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[])
@@ -801,17 +995,69 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    /* ---- 单实例锁（2026-10-31）----
+     *
+     * 为什么需要：任何完整 nsh 启动都会执行 rc.sysinit + rcS；rc.sysinit 的
+     * `mount -t tmpfs /tmp` 会把 /tmp 里的自启防重入标记清掉，rcS 又启动一个
+     * ai_interview —— 第二个实例重新跑 `wapi mode` 初始化驱动，把第一个实例
+     * 已经连上的 Wi-Fi 断掉。串口逃逸现在已改用不跑初始化的 `sh`，但这里仍
+     * 保留单实例锁，防止其它路径（手动起 nsh、rcS 重入）再拉起第二个实例。
+     *
+     * 命名信号量是内核对象，不受 /tmp 重挂影响、开机自动清空。第二个实例在
+     * 任何初始化（尤其是 Wi-Fi）之前就退出，所以不会再碰驱动。 */
+    {
+        sem_t *lock = sem_open("/ai_interview", O_CREAT, 0666, 1);
+
+        if (lock != SEM_FAILED) {
+            if (sem_trywait(lock) != 0) {
+                printf("[Main] 已有实例在运行，本实例退出（不影响已有 Wi-Fi）\n");
+                sem_close(lock);
+                return 0;
+            }
+        } else {
+            printf("[Main] 提示: 单实例锁不可用，继续启动\n");
+        }
+    }
+
     printf("========================================\n");
     printf("  AI模拟面试官 - 端侧主程序 v0.2\n");
     printf("  队伍: mianbao (contest2026_151)\n");
     printf("========================================\n\n");
 
+    /* 保证从本程序 spawn 的 nsh（串口逃逸）不会重跑 rcS 自启 ——
+     * 手动从 nsh 启动本程序时 /tmp 里可能还没有这个标记。 */
+    {
+        int fd = open("/tmp/ai_interview_started", O_WRONLY | O_CREAT, 0666);
+
+        if (fd >= 0) {
+            close(fd);
+        }
+    }
+
+    /* 注意：这里**不要**再读 stdin 做"按回车进 nsh"之类的窗口 ——
+     * 用户看到提示会立刻开始输入 SSID，先读到的那个字符会被吞掉，
+     * 后面输密码时已经在别的上下文里（2026-10-31 真机踩到）。
+     * 需要调试 shell 时用专门的调试镜像。 */
+
+    /* 云端地址也可以写在 /data/ai_interview_cloud（一行），省得进 nsh。 */
+    load_cloud_url_file();
+
+    /* 首次使用：没有 Wi-Fi 凭据 → 直接在串口提示输入（2026-10-31）。
+     *
+     * 放在界面初始化之前：板子开机由 rcS 自动运行本程序，用户**不必先敲
+     * ai_interview**，也不用碰屏幕。凭据保存后，下面的工作线程启动时会自动连。
+     * 按回车跳过则继续进界面，待机页右上角仍有「Wi-Fi」兜底入口。 */
+    if (!wifi_have_creds()) {
+        (void)wifi_serial_setup();
+    }
+
     state_machine_init();
     init_buttons();
 
-    /* 音量：先读偏好（断电记住），再起界面 —— 界面上的音量控件要显示当前值。 */
+    /* 音量 / 轮数：先读偏好（断电记住），再起界面 —— 界面控件要显示当前值。 */
     load_volume_pref();
     audio_set_volume(g_volume_pct);
+    load_rounds_pref();
 
     /* 屏幕界面：**附件**，初始化失败只告警、不中断面试（见 interview_ui.h）。 */
     if (interview_ui_init() == 0) {
@@ -819,27 +1065,45 @@ int main(int argc, char *argv[])
         interview_ui_set_pressure(current_pressure());
         interview_ui_set_volume(g_volume_pct);
         interview_ui_set_volume_cb(app_volume_step);
+        interview_ui_set_rounds(g_target_rounds);
+        interview_ui_set_rounds_cb(app_rounds_step);
 
-        /* 首次使用（没有 Wi-Fi 凭据）直接进配网页：普通用户不用碰串口。
-         * 有凭据就不打扰，工作线程启动时会自动连（见 pipeline_worker）。 */
-        if (!wifi_have_creds()) {
-            printf("[Main] 未找到 Wi-Fi 凭据 —— 屏幕上显示配网页\n");
-            interview_ui_set_wifi_cb(app_wifi_setup);
-            interview_ui_show_wifi(1);
-        }
+        /* 配网页保留为兜底入口（待机页右上角「Wi-Fi」）。
+         * 2026-10-31 起开机不再自动弹配网页 —— 首次配置走串口
+         * （见 main() 开头的 wifi_serial_setup），普通用户不用碰屏幕。 */
+        interview_ui_set_wifi_cb(app_wifi_setup);
     } else {
         printf("[Main] 屏幕不可用 —— 界面相关功能跳过，面试流程不受影响\n");
+    }
+
+    /* 开机自动联网（2026-10-31 从工作线程挪到这里）。
+     *
+     * 为什么必须在**界面/工作线程之前**、由主线程独占执行：
+     *   Realtek 驱动初始化（wapi mode → wifi_on）里会调 mallinfo() 遍历整个堆；
+     *   若此时别的线程正在 malloc/free，遍历到一半堆被改动就会 data abort
+     *   （10-31 真机崩溃：task「wapi mode wlan0 2」、backtrace 进 mm_foreach）。
+     *   这里主线程阻塞等待子任务，界面刚建完不再分配、工作线程尚未创建，
+     *   与手工在 nsh 里敲命令的时序一致。
+     *
+     * 耗时几秒，此时屏上已经是待机页。 */
+    printf("[Main] 检查 Wi-Fi（自动联网）...\n");
+    fflush(stdout);
+    if (wifi_connect_boot() != 0) {
+        printf("[Main] 提示: 自动联网未完成，将按当前网络继续\n");
     }
 
     /* 云端地址在**启动工作线程之前**打印：此刻主线程是唯一在写 stdout 的线程，
      * 不会被踩掉（原因见 network_client.c 里 cloud_init 那段注释）。 */
     printf("[Cloud] 云端地址: %s\n", app_cloud_base_url());
     printf("[Cloud] 来源: %s\n", cloud_url_source());
+    printf("[Main] 面试轮数: %d（报告在第 %d 次回答后出）\n",
+           g_target_rounds, g_target_rounds + 1);
 
     /* 账号 token 读盘并交给网络层。cloud_set_user_token 只是字符串拷贝，
      * 不是网络调用 —— 可以在这里（工作线程启动前）做，避免竞争。 */
     load_user_token();
     cloud_set_user_token(g_user_token);
+    cloud_set_target_rounds(g_target_rounds);
 
     /* 流水线工作线程：栈必须够大，libcurl 要 200KB 量级。
      * 本函数内不得出现任何 curl 调用 —— 主任务栈放不下。 */
@@ -878,6 +1142,12 @@ int main(int argc, char *argv[])
             g_ui_in_session = live;
             interview_ui_set_session(live);
         }
+
+        /* 空闲时输入 `nsh` 回车可进命令行（exit 返回）。 */
+        if (!live) {
+            check_serial_shell();
+        }
+
         interview_ui_pump();
 
         /* 工作线程申请到绑定 URL 时，在主线程显示二维码（LVGL 只归主线程）。 */

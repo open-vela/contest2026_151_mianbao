@@ -189,6 +189,8 @@ def summary_of(snapshot, mtime=None) -> dict:
     return {
         "session_id": snapshot.get("session_id", ""),
         "role": snapshot.get("role", ""),
+        # 目标问答轮数（2026-11-01）：老场次没有这个字段，按默认 10 显示。
+        "target_rounds": snapshot.get("target_rounds", 10),
         "created_at": snapshot.get("created_at"),
         "updated_at": snapshot.get("updated_at"),
         "mtime": mtime,

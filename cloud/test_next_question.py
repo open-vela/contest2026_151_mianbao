@@ -60,11 +60,22 @@ class NextQuestionTestCase(unittest.TestCase):
         return out, calls
 
 
+class TestDirectorHint(NextQuestionTestCase):
+    def test_hint_is_injected_in_technical_stage(self):
+        """导演环的动作要求必须进本轮 user 消息（和 brief 同处）。"""
+        _, calls = self.run_next("AI 应用开发", 5, [FRESH])
+        self.assertIn("【导演】", calls[0]["messages"][-1]["content"])
+
+    def test_opening_has_no_director_hint(self):
+        _, calls = self.run_next("AI 应用开发", 1, [FRESH])
+        self.assertNotIn("【导演】", calls[0]["messages"][-1]["content"])
+
+
 class TestRoleFocus(NextQuestionTestCase):
     def test_技术追问段带上岗位角度(self):
         """换岗位必须真的改变追问方向 —— 否则多岗位演示就是"换汤不换药"（§11.45）。"""
-        _, calls = self.run_next("Data Analyst", 5, [FRESH])
-        focus = llm_service.load_skill("next_question")["role_focus"]["Data Analyst"]
+        _, calls = self.run_next("数据分析师", 5, [FRESH])
+        focus = llm_service.load_skill("next_question")["role_focus"]["数据分析师"]
         user_message = calls[0]["messages"][-1]["content"]
         self.assertIn(focus, user_message, "技术追问段必须带上本岗位的关注角度")
         self.assertNotIn(focus, calls[0]["system_prompt"],
@@ -72,8 +83,8 @@ class TestRoleFocus(NextQuestionTestCase):
 
     def test_背景深挖段不注入(self):
         """背景深挖问的是他的基本功，加岗位角度只会把话题拽窄。"""
-        _, calls = self.run_next("Data Analyst", 2, [FRESH])
-        focus = llm_service.load_skill("next_question")["role_focus"]["Data Analyst"]
+        _, calls = self.run_next("数据分析师", 2, [FRESH])
+        focus = llm_service.load_skill("next_question")["role_focus"]["数据分析师"]
         self.assertNotIn(focus, calls[0]["messages"][-1]["content"])
 
     def test_未知岗位优雅退化(self):

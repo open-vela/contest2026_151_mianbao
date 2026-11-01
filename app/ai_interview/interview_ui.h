@@ -40,6 +40,18 @@ void interview_ui_set_volume_cb(void (*cb)(int delta));
 /* 当前音量百分比（0~100）—— 两页上的"音量 X%"都会更新。 */
 void interview_ui_set_volume(int percent);
 
+/*
+ * 面试轮数（2026-11-01）：待机页左上角「− 轮数：10 +」加减按钮。
+ * 回调参数是 -1 / +1，由主程序在预设（5/6/8/10/15/20/30）之间移动。
+ * 回调运行在主线程。
+ */
+typedef void (*ui_rounds_cb_t)(int delta);
+
+void interview_ui_set_rounds_cb(ui_rounds_cb_t cb);
+
+/* 更新待机页上显示的轮数（不回调、不写盘）。 */
+void interview_ui_set_rounds(int rounds);
+
 /* 会话开始/结束 → 切页：1 = 面试中页，0 = 待机页。只在真的变化时才动界面。 */
 void interview_ui_set_session(int in_session);
 

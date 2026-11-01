@@ -25,7 +25,9 @@ cloud/
 ├── question_bank.py        # 题库检索模块（纯标准库，见 3.5）
 ├── reply_guard.py          # 回复闸门：剥掉「判断：/理由：」这类元叙述（见 3.6）
 ├── finish_guard.py         # 结束判据：候选人明说「结束吧」才提前收尾（见 3.7）
+├── interview_spec.py       # 评分口径唯一来源：维度/权重/版本（见 3.9）
 ├── score_guard.py          # 结构化评分的闸门：抽 JSON、夹越界分、总分自己算（见 3.9）
+├── director.py             # 云端导演环：深入/换角度/换主题（纯规则，见 3.11）
 ├── session_store.py        # 会话落盘：原子写、永不抛异常（见 3.7）
 ├── report_export.py        # 报告导出：Markdown / JSON 渲染（见 3.7）
 ├── report_guard.py         # 报告闸门：报告里有没有「」原话引用（纯函数，见 3.8）
@@ -94,7 +96,7 @@ tts_text_to_audio_stream(text, output_file, voice, style)  # 流式合成，保�
 - ✅ 小米 MIMO LLM 接入，多轮上下文面试问答
 - ✅ 按 `skills/*.json` 加载人设与提示词（`start_interview` / `next_question` / `evaluate_answer` / `generate_feedback`）
 - ✅ 每轮按**岗位 + 候选人最近一句回答**从题库取 3 道参考题，注入 `next_question` 的 system prompt（岗位对不上则不加，见 3.5）
-- ✅ 思考关闭（`thinking={"type":"disabled"}`）：`mimo-v2.5` 是推理模型，reasoning 与正文**共用** `max_tokens`，不关会让正文被截断
+- ✅ 思考关闭（`thinking={"type":"disabled"}`）：MIMO 对话模型是推理模型，reasoning 与正文**共用** `max_tokens`，不关会让正文被截断。2026-11-01 起对话模型改为 **`mimo-v2.6-flash`**（`mimo-v2.5` 已下线，只剩 ASR/TTS 变体），该参数已复测有效；可用 `LLM_MODEL` 环境变量覆盖。
 - ✅ 返回 `next_action`（`continue` 继续提问 / `finish` 出报告）供端侧状态机判断
 
 **主要函数：**
@@ -196,8 +198,9 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 > ⚠️ **这四个维度必须与报告正文念的那四个一致**（`skills/generate_feedback.json`），
 > 否则用户读完报告低头看卡片会发现两边说的不是一回事。2026-10-01 统一之前，这里用的是
 > 另一套（"表达与逻辑 / 专业深度 / 项目经验 / 岗位匹配"），而 `skills/README.md` 里还写着
-> 第三套 —— **三套并存**。现在以 `score_guard.DIMENSIONS` 为唯一事实来源，评分提示词由它
-> 注入，所以**改维度只需改那一处**（见台账 §11.34）。
+> 第三套 —— **三套并存**。现在以 `interview_spec.DIMENSIONS` 为唯一事实来源（2026-11-01
+> 从 `score_guard` 收拢过去），评分提示词、`score_guard` 校验、`growth` 维度对比都由它
+> 注入，所以**改维度只需改那一处**（见台账 §11.34 / §11.74）。
 
 **三条纪律**（写在 `app.py` 的 `_start_scoring()` 注释里，每条都有代价换来的理由）：
 
@@ -207,11 +210,11 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 | **绝不改端侧响应体** | 评分只进会话快照（网页 / 导出 / 落盘）。`/api/interview` 的字段**一个不多、一个不少** —— `test_scoring.py` 里有专门盯这条的用例 |
 | **失败只记日志** | 评分是锦上添花，不能影响一场已经完成的面试 |
 
-**闸门不信模型**（`score_guard.normalize()`）：分数越界**夹到边界**而不是丢弃、只认 `DIMENSIONS` 里那四个名字、**总分由代码算**（模型算不对算术）、漏掉的维度如实记进 `missing` 而不是补零（补零等于凭空扣分）。
+**闸门不信模型**（`score_guard.normalize()`）：分数越界**夹到边界**而不是丢弃、只认 `interview_spec.DIMENSIONS` 里那四个名字、**总分由代码算**（模型算不对算术）、漏掉的维度如实记进 `missing` 而不是补零（补零等于凭空扣分）。总分自 2026-10-31 起按 **30/30/25/15 加权**（取自同作者 myagent 的 `interview_spec.py` 思路；我们的口径版本是 **v2**，v1 是四维均分），缺维度时按已评维度的权重重新归一化 —— 不再四维简单平均。评分结果带 `scoring_version`，成长页遇到跨版本会提示"趋势仅供参考"。
 
-**维度只有一个来源**：`score_guard.DIMENSIONS`。提示词模板 `skills/score_report.json` 里写的是 `{dimensions}` 占位符，运行时注入 —— 这样就不会出现"提示词写了 5 个维度、代码只认 4 个"的漂移。**改维度要改代码，不是改那个 JSON。**
+**维度只有一个来源**：`cloud/interview_spec.py` 的 `DIMENSIONS`（`score_guard` 只是 re-export）。提示词模板 `skills/score_report.json` / `generate_feedback.json` 里写的是 `{dimensions}` 占位符，运行时注入 —— 这样就不会出现"提示词写了 5 个维度、代码只认 4 个"的漂移。**改维度要改 `interview_spec.py`，不是改那个 JSON。**
 
-**依据的核对是软的**：`verify_evidence()` 查每个维度的"依据"是不是真出自候选人，但**只记日志、不拦** —— 模型把原话压缩一两个字是常态（同 `report_guard.check_quote_evidence` 的取舍）。写 `NOT_MENTIONED`（未提及）的维度直接跳过：那是诚实的"没有依据"，不是编造。
+**依据的核对：重试一次，仍不对就标 partial**（2026-11-01）：`verify_evidence()` 查每个维度的"依据"是不是真出自候选人；有对不上的，**只重试一次**，要求模型把这几项改成逐字原话。重试后仍有对不上的，保留评分但写入 `evidence_status="partial"` 与 `evidence_unmatched` —— 不丢整份报告，也不假装全对。写 `NOT_MENTIONED`（未提及）的维度直接跳过：那是诚实的"没有依据"，不是编造。
 
 **输入是编号问答清单，不是整场对话**（2026-10-01 起）：`llm_service._qa_pairs()` 先把历史配成「第 N 题 / 面试官：… / 候选人：…」，题号就是模型回 `per_question` 时用的 index。两个好处：
 
@@ -249,6 +252,49 @@ build_reference_block(role, query, asked_text, round_index, limit)  # 无匹配�
 3. **岗位以会话里的为准**，不信客户端再传的那个 —— 刷新页面之后客户端可能忘了当初选的是什么。
 
 > `state="start"` 走的是 `llm_service.llm_interview()` 里那个 `state == "start"` 分支（`start_interview`）。它在**设备链路上不可达**（板子永远先录音、只发 `recording_finished`，台账 §11.25 记过这属于"死代码"）—— 文字演练正好需要"云端先开口"，它在这里复活了。
+
+---
+
+### 3.11 云端导演环 (`director.py`，2026-11-01 新增)
+
+**双环分工**：设备实时环负责"什么时候录、什么时候放"（端侧状态机）；云端导演环负责**本轮该深入 / 换角度 / 换主题**；模型只负责把选定的动作写成一句像人说的话。这样追问节奏由代码保证，不靠模型数轮次（它数不准、会抄自己）。
+
+判据全部来自**上一答的字面信号**，零额外模型调用：
+
+| 信号 | 判据（启发式，不参与评分） | 动作 |
+|---|---|---|
+| empty | 空回答 | 同层换角度（换更具体的问法） |
+| thin | 太短、或空泛词多且没数字 | 同层换角度（要一个具体例子）；连续两轮 thin → 换主题 |
+| substantive | 够长且带数字/细节 | 深入一层；连续条数达到压力上限（温和 1 / 标准 2 / 压力 3）→ 换主题 |
+
+只在 `background` / `technical` 两段生效；开场和反问不干预。**只看当前段内**的回答（段边界 streak 归零），避免背景深挖的实答让技术追问一开场就"换主题"。提示词里注入一行 `【导演】本轮动作：…`，串口日志打 `[导演] 第 N 轮：…`。单测：`test_director.py`。
+
+### 3.12 成长追踪与薄弱点生命周期 (`growth.py`，2026-11-01 扩展)
+
+`/api/growth` 仍然只读历史、纯聚合、不调模型。新增两件事：
+
+* **评分口径版本**：`points` 带 `scoring_version`（老场次按 v1 均分、v2 起加权）；顶层返回 `scoring_versions` / `version_mixed`，网页在跨版本时提示"趋势仅供参考"。
+* **薄弱点生命周期**（借鉴 myagent 的 `profile.py`）：把同一维度反复低分的场次聚合成一项，记录 `times_seen / first_seen / last_seen / latest_score / good_streak / improved / archived`，按简化 SM-2 给出 **1/3/7/14 天**复习间隔与 `next_review / due`。**模型漏评该维度不算改善**（missing 不中断连续低分链）。网页成长卡在「总分曲线」下面显示「薄弱点复习」列表，已归档的不再打扰。
+
+> 单测：`test_growth.py`（含版本混用、missing 不算改善、间隔 1→3→7）。
+
+### 3.13 目标轮数（2026-11-01 新增）
+
+演示时只想问 5~6 轮，正式面试可能要数十轮。请求体新增可选字段 `target_rounds`
+（**问答轮数**，不含最后出报告的那一次），服务端夹到 **4~30**，默认 10：
+
+* `/api/interview` 与 `/api/interview/text` 都接受；**建会话时钉住**，中途再传不改
+  （同 role / pressure）。
+* `interview_stage.plan_for(N)` 动态生成段表：开场 1 + 背景约 25% + 技术约 65% +
+  反问 1；默认 10 轮逐字返回原 `STAGE_PLAN`，行为不变。
+* 结束判据从固定的 20 条改为 `2 × target_rounds`：第 N 次问答后，第 N+1 次回答
+  触发出报告。候选人说"结束吧"仍可提前收尾。
+* 端侧：待机页左上角「− 轮数：10 +」加减按钮在 5/6/8/10/15/20/30 之间移动，存
+  `/data/ai_interview_rounds`，随请求上报；文字演练开场页也有下拉框。
+* 老客户端不带该字段 → 默认 10，协议向后兼容。
+
+> 单测：`test_interview_stage.TestDynamicRounds`（夹取范围、默认段表不变、
+> 6/20 轮段表连续）+ `test_scoring.TestTargetRounds`（6 轮第 7 次出报告、默认 10 不变）。
 
 ---
 
@@ -353,7 +399,7 @@ curl -s -X POST http://127.0.0.1:5000/api/test/tts \
 | ④ | `ab_next_question.py` | 提示词改版的效果对照（旧版 vs 新版，**单变量**） | 先 `--dry-run` 人工审参考块，再 `--n 30` | 空返回 ≤1/30、平均字数 ≤ 旧版×1.2、Markdown 与编号残留 0、≥90% 以问号结尾；报告 ≤250 字且 ≥90% 含「」原话引用 | 是 |
 | ③d | `rehearsal.py --short-answers --say-finish --rounds 3` | **退化输入**：候选人几乎没说话时，报告里**还有没有「」原话引用**（台账 §11.27 那次就是在这条路上失效的） | 同上 | 第 3 轮 `type=report`、报告含「」引用、其余判据不退步 | 是 |
 
-常用参数：`rehearsal.py --role "AI/ML Engineer"` 换岗位（走英文题库）、`--rounds 3` 只跑 3 轮、`--short-answers` 换成极短回答（配 `--say-finish --rounds 3` 最省，3 轮就出报告）；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
+常用参数：`rehearsal.py --role "机器学习工程师"` 换岗位（走英文题库）、`--rounds 3` 只跑 3 轮、`--short-answers` 换成极短回答（配 `--say-finish --rounds 3` 最省，3 轮就出报告）；`ab_next_question.py --n 2` 冒烟、`--group P` 只跑一组、`--dry-run` 完全不花钱。
 
 > ①② 是纯本地的（**不需要 API key**），改完随手就能跑；③④ 会真打 API，通常只在**改提示词/改闸门/改选题逻辑**之后跑。④ 的 `--group` 支持只重测失败的那一臂（P 提示词 / B 题库 / R 报告）。
 >

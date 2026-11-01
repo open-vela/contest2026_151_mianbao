@@ -623,9 +623,9 @@ class TestGrowthRoute(RouteTestCase):
     def test_role_filter(self):
         session_store.save(snapshot(SID, created_at=1000,
                                     score={"total": 60, "dimensions": []}))
-        session_store.save(snapshot(self.SID2, created_at=2000, role="Data Analyst",
+        session_store.save(snapshot(self.SID2, created_at=2000, role="数据分析师",
                                     score={"total": 80, "dimensions": []}))
-        body = self.client.get("/api/growth?role=Data Analyst").get_json()
+        body = self.client.get("/api/growth?role=数据分析师").get_json()
         self.assertEqual([p["session_id"] for p in body["points"]], [self.SID2])
 
 

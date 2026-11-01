@@ -18,6 +18,12 @@ import sys
 
 # 保留哪些岗位（子串匹配，小写）
 AI_ROLE_KEYWORDS = ("ai/ml", "machine learning", "data scientist", "data analyst")
+# 原始 CSV 是英文岗位名；题库统一用中文（2026-10-31 用户要求六个岗位全中文）
+ROLE_NAME_ZH = {
+    "ai/ml engineer": "机器学习工程师",
+    "data scientist": "数据科学家",
+    "data analyst": "数据分析师",
+}
 # 本文件在 question_bank/import/ 下，数据写进同级的 question_bank/data/
 OUT_PATH = pathlib.Path(__file__).parent.parent / "data" / "ai_questions.json"
 
@@ -37,7 +43,7 @@ def main(source: str) -> None:
             rows.append({
                 "question": (row.get("question") or "").strip(),
                 "keywords": keyword_list,
-                "role": role,
+                "role": ROLE_NAME_ZH.get(role.lower(), role),
                 "category": (row.get("question_category") or "").strip(),
                 "level": (row.get("question_level") or "").strip(),
                 "stage": (row.get("interview_stage") or "").strip(),

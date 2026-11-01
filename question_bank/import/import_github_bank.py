@@ -338,7 +338,7 @@ def _extract_headings(root: pathlib.Path, source: dict, ctx: dict) -> list[dict]
 
 SOURCES = [
     {"repo": "bcefghj/ai-agent-interview-guide", "dir": "ai-agent-guide",
-     "role": "AI Agent 开发", "out": "zh_questions.json",
+     "role": "智能体开发", "out": "zh_questions.json",
      # 白名单：只取技术内容；排除 学习路线图/企业招聘/简历模板/STAR面试稿 等求职向目录
      "include": ("docs/01-面试八股文", "docs/06-面试问答集"),
      "extract": _extract_agent_guide},
@@ -361,7 +361,7 @@ SOURCES = [
      "pattern": r"^###\s*Q\d+\s*[:：.、]\s*(.+)",
      "category": "h1"},
     {"repo": "bcefghj/learn-nanobot", "dir": "learn-nanobot",
-     "role": "AI Agent 开发", "out": "zh_questions.json",
+     "role": "智能体开发", "out": "zh_questions.json",
      "files": "docs/13-interview-bagua/README.md",     # 其余 docs 是教程、14~17 是求职向
      "pattern": r"^###\s*Q\d+\s*[.、:：]\s*(.+)",
      "section": r"^##\s+(.+)",
