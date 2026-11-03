@@ -35,3 +35,7 @@ cloud/test_tts_stream_output.wav
 # （它原本的注释写的是"刻意不放 logs/，因为那是大赛要求提交的日志目录" —— logs/ 于
 #   2026-09-29 整体移除后这句已不成立，改成了上面这句。）
 cloud/data/
+
+# 答辩材料（PPT、话术、口播稿）—— 2026-11-04 用户决定移出仓库，
+# 放在 D:\面包包\demo（由 tools/build_ppt.py 生成 PPTX）。
+/demo/
