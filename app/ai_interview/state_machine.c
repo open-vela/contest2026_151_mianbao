@@ -84,6 +84,9 @@ static system_state_t get_next_state(system_state_t current, system_event_t even
     switch (current) {
         case STATE_IDLE:
             if (event == EVENT_BUTTON_PRESS) { g_retry_count = 0; return STATE_RECORDING; }
+            /* 断网补送（2026-11-02）：上一轮的音频还在，直接进 UPLOADING 重送。
+             * 没有新录音，不能走 BUTTON_PRESS（那会进 RECORDING 空闪）。 */
+            if (event == EVENT_RETRY) { g_retry_count = 0; return STATE_UPLOADING; }
             return current;
         case STATE_RECORDING:
             if (event == EVENT_RECORD_DONE || event == EVENT_RECORD_TIMEOUT) return STATE_UPLOADING;

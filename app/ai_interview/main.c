@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <spawn.h>
@@ -37,6 +38,7 @@
 #include "app_config.h"
 #include "interview_ui.h"
 #include "wifi_connect.h"
+#include "tts_cache.h"
 
 /* ---- 按键 GPIO ---- */
 #define KEY1_GPIO  1   /* K1 开始面试 */
@@ -56,6 +58,9 @@ static int g_key2_hold = 0;  /* K2 已按住的拍数（100ms/拍）—— 长�
 #define UPLOAD_MAX_RETRY  3
 #define UPLOAD_RETRY_SEC  3
 
+/* 断网自动补送：有待送音频时，隔多久探一次网络（健康检查），通了立刻补送。 */
+#define PENDING_PROBE_SEC 8
+
 /* K2 长按多久算"舍弃本场"：15 拍 × 100ms = 1.5 秒。
  * 用于误触 K1 / 岗位选错时**直接放弃这一场、不生成报告**（省时间）。 */
 #define K2_DISCARD_TICKS  15
@@ -71,6 +76,7 @@ typedef enum {
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static app_cmd_t g_cmd = CMD_NONE;
 static volatile int g_abort = 0;     /* 置 1 让录音/播放尽快退出 */
+static volatile int g_drop_round = 0; /* K2 长按舍弃本场：在飞的补送也不许再存回来 */
 static int g_worker_busy = 0;
 
 /* ---- 工作线程 -> 主线程 ---- */
@@ -86,6 +92,102 @@ static char g_last_text[256];
 /* 待删除的会话 id（K2 长按"舍弃本场"设置，工作线程消费）。
  * 网络调用留在工作线程 —— 主循环每 100ms 一拍，塞不进最多 30 秒的 HTTP。 */
 static char g_discard_sid[64];
+
+/* ---- 断网重试的"上一轮音频"（2026-11-02，断网体验第 2 层）----
+ *
+ * 口径（台账 §11.65）：断网 = 暂停练习**不丢进度**。上传失败的这一轮不丢：
+ * WAV 留在内存里，网络恢复后自动补送 / 按 K2 补送，用户不用重新说一遍。
+ *
+ * 指针与标志都在锁内换手：工作线程 take/set，主线程 clear（K2 长按舍弃）
+ * 和读标志（按键判定 + 屏幕提示），两边都会碰。free 一律放到锁外。 */
+static uint8_t *g_pending_wav;
+static size_t   g_pending_len;
+static int      g_has_pending;
+
+/* 工作线程调用：把 WAV 收进来（所有权转移给本文件）。 */
+static void set_pending_upload(uint8_t *wav, size_t len)
+{
+    uint8_t *old;
+
+    if (wav == NULL || len == 0) {
+        return;
+    }
+    pthread_mutex_lock(&g_lock);
+    old = g_pending_wav;              /* 防御：正常流程里 take 先清，不会走到 */
+    g_pending_wav = wav;
+    g_pending_len = len;
+    g_has_pending = 1;
+    pthread_mutex_unlock(&g_lock);
+    free(old);
+}
+
+/* 工作线程调用：取走上一轮的音频。返回 1 = 取到了（调用方负责 free）。 */
+static int take_pending_upload(uint8_t **wav, size_t *len)
+{
+    pthread_mutex_lock(&g_lock);
+    if (g_pending_wav == NULL) {
+        pthread_mutex_unlock(&g_lock);
+        return 0;
+    }
+    *wav = g_pending_wav;
+    *len = g_pending_len;
+    g_pending_wav = NULL;
+    g_pending_len = 0;
+    g_has_pending = 0;
+    pthread_mutex_unlock(&g_lock);
+    return 1;
+}
+
+/* 主线程调用（K2 长按"舍弃本场"）：明确丢掉保留的音频。 */
+static void clear_pending_upload(void)
+{
+    uint8_t *old;
+
+    pthread_mutex_lock(&g_lock);
+    old = g_pending_wav;
+    g_pending_wav = NULL;
+    g_pending_len = 0;
+    g_has_pending = 0;
+    pthread_mutex_unlock(&g_lock);
+    if (old != NULL) {
+        free(old);
+        printf("[Main] 保留待补送的音频已丢弃（舍弃本场）\n");
+    }
+}
+
+/* 主线程调用：有没有等着补送的音频（K1/K2 的"重试"判定 + 屏幕提示）。 */
+static int app_has_pending(void)
+{
+    int has;
+
+    pthread_mutex_lock(&g_lock);
+    has = g_has_pending;
+    pthread_mutex_unlock(&g_lock);
+    return has;
+}
+
+/* ---- 网络不可用状态（2026-11-03，补 §11.78 记的缺口）----
+ * 原来提示条只在"上传失败且音频已保留"时出现，**开机没联网时屏幕一声不吭**。
+ * 健康检查失败就把这个标志立起来，主循环提示「网络未连接…」；工作线程
+ * 空闲时定期探测，恢复后自动收起。 */
+static int g_net_down;
+
+static void set_net_down(int down)
+{
+    pthread_mutex_lock(&g_lock);
+    g_net_down = down ? 1 : 0;
+    pthread_mutex_unlock(&g_lock);
+}
+
+static int app_net_down(void)
+{
+    int down;
+
+    pthread_mutex_lock(&g_lock);
+    down = g_net_down;
+    pthread_mutex_unlock(&g_lock);
+    return down;
+}
 
 /* ---- 当前岗位（K3 循环切换）----
  *
@@ -105,9 +207,21 @@ static const char *current_role(void)
     return (picked != NULL) ? picked : app_role();
 }
 
+/* 当前岗位在岗位表里的下标 —— 开场白缓存键 greet0..greet5 用它。 */
+static int current_role_index(void)
+{
+    int idx = (g_role_idx >= 0) ? g_role_idx : app_role_index(app_role());
+
+    return (idx >= 0) ? idx : 0;
+}
+
 /* 屏幕界面当前在哪一页（主线程专用缓存）：有没有会话 → 面试中页 / 待机页。
  * 存成文件级 static 而不是循环里的局部，是为了让"只在变化时动界面"一眼可见。 */
 static int g_ui_in_session = 0;
+
+/* 断网提示条 / 联网状态小字当前是否在显示（同上：只在变化时动界面）。 */
+static int g_ui_hint_visible = 0;
+static int g_ui_net_shown = 0;
 
 /* ---- 压力档位（K2 在"待机且无会话"时循环切换）----
  *
@@ -403,48 +517,77 @@ static void run_one_round(void)
     int rc;
     int attempt;
     int is_new_session;
+    int is_retry = 0;
 
     memset(&resp, 0, sizeof(resp));
+    g_drop_round = 0;   /* 新的一轮开始，上一次"舍弃本场"的指令到此为止 */
 
-    /* ---- 0. 开场白（仅新一场）----
-     * 用户要求：面试官先报岗位再请自我介绍 ——
-     * 「你好，你今天来面试「AI 应用开发」岗位，请简单介绍一下你自己。」
-     * 用云端 TTS 现合成（1~2 秒），不走 LLM：措辞固定、省一次模型调用。
-     * 合成失败就**跳过**，绝不因为开场白没出来就不让面试。 */
-    pthread_mutex_lock(&g_lock);
-    is_new_session = (g_session_id[0] == '\0');
-    pthread_mutex_unlock(&g_lock);
-    if (is_new_session) {
-        char line[160];
-        uint8_t *greeting_wav = NULL;
-        size_t greeting_len = 0;
+    /* ---- 0a. 断网补送（2026-11-02）----
+     * 上一轮的音频还在（没能送达云端）就直接重送，**不录新的** —— 口径是
+     * "断网不丢进度、不让用户重答"。EVENT_RETRY 把状态机从 ERROR/IDLE 送进
+     * UPLOADING（没有新录音，不能走 BUTTON_PRESS，那会进 RECORDING 空闪）。 */
+    if (take_pending_upload(&wav, &wav_len)) {
+        is_retry = 1;
+        printf("[Main] 上一轮音频还在，直接补送（不用重答）\n");
+        app_post_event(EVENT_RETRY);
+    } else {
+        /* ---- 0. 开场白（仅新一场）----
+         * 用户要求：面试官先报岗位再请自我介绍 ——
+         * 「你好，你今天来面试「AI 应用开发」岗位，请简单介绍一下你自己。」
+         * 云端 TTS 合成（1~2 秒），不走 LLM：措辞固定、省一次模型调用。
+         * 2026-11-02 起**本地缓存优先**（tts_cache）：开机在线时预合成过一次，
+         * 断网 / TTS 服务故障也能出声（断网体验第 3 层）。缓存没有再现场合成、
+         * 顺手存档；都失败就**跳过**，绝不因为开场白没出来就不让面试。 */
+        pthread_mutex_lock(&g_lock);
+        is_new_session = (g_session_id[0] == '\0');
+        pthread_mutex_unlock(&g_lock);
+        if (is_new_session) {
+            char line[160];
+            char key[16];
+            uint8_t *greeting_wav = NULL;
+            size_t greeting_len = 0;
 
-        snprintf(line, sizeof(line),
-                 "你好，你今天来面试「%s」岗位，请简单介绍一下你自己。",
-                 current_role());
-        if (cloud_tts_text(line, &greeting_wav, &greeting_len) == CLOUD_OK) {
-            printf("[Main] 开场白：%s\n", line);
-            (void)audio_play_wav(greeting_wav, greeting_len, &g_abort);
-            free(greeting_wav);
-        } else {
-            printf("[Main] 警告: 开场白合成失败，直接开始录音\n");
+            snprintf(line, sizeof(line),
+                     "你好，你今天来面试「%s」岗位，请简单介绍一下你自己。",
+                     current_role());
+            snprintf(key, sizeof(key), "greet%d", current_role_index());
+
+            if (tts_cache_play(key, &g_abort) == 0) {
+                printf("[Main] 开场白（本地缓存）：%s\n", line);
+            } else if (!g_abort &&
+                       cloud_tts_text(line, &greeting_wav, &greeting_len) == CLOUD_OK) {
+                printf("[Main] 开场白：%s\n", line);
+                (void)tts_cache_store(key, greeting_wav, greeting_len); /* 存档，下次断网可用 */
+                (void)audio_play_wav(greeting_wav, greeting_len, &g_abort);
+                free(greeting_wav);
+            } else {
+                printf("[Main] 警告: 开场白合成失败，直接开始录音\n");
+            }
+            if (g_abort) {
+                printf("[Main] 本轮已被 K2 取消（开场白阶段）\n");
+                app_post_event(EVENT_ERROR);
+                return;
+            }
         }
-        if (g_abort) {
-            printf("[Main] 本轮已被 K2 取消（开场白阶段）\n");
+
+        /* ---- 1. 录音 ---- */
+        rec = audio_record_wav(&wav, &wav_len, &g_abort);
+        if (rec == AI_REC_NOSPEECH) {
+            /* 一直没人声：**本地**说一句"没听清"（缓存，断网也能出声），不上传、
+             * 不进历史 —— 同云端空识别短路的口径，不打乱轮次计数。 */
+            printf("[Main] 一直没听到人声 —— 本地提示后回待机（不上传）\n");
+            (void)tts_cache_play(TTS_CACHE_NO_HEAR, &g_abort);
             app_post_event(EVENT_ERROR);
             return;
         }
-    }
+        if (rec != AI_REC_OK) {
+            /* 取消/设备错误都回到 IDLE：状态机里 RECORDING --ERROR--> IDLE */
+            app_post_event(EVENT_ERROR);
+            return;
+        }
 
-    /* ---- 1. 录音 ---- */
-    rec = audio_record_wav(&wav, &wav_len, &g_abort);
-    if (rec != AI_REC_OK) {
-        /* 三种失败都回到 IDLE：状态机里 RECORDING --ERROR--> IDLE */
-        app_post_event(EVENT_ERROR);
-        return;
+        app_post_event(EVENT_RECORD_DONE);   /* RECORDING -> UPLOADING */
     }
-
-    app_post_event(EVENT_RECORD_DONE);   /* RECORDING -> UPLOADING */
 
     /* ---- 2. 上传（带重试）----
      *
@@ -489,18 +632,42 @@ static void run_one_round(void)
         }
     }
 
-    free(wav);
-    wav = NULL;
-
     /* 取消要**先于**失败判定：一次用户取消不该被记成一次故障，也就不该进错误态、
      * 更不该把"云端多半缺 key"之类的提示打出来。判定顺序反了，日志里就会出现
      * "按了取消、却报网络错误"这种自相矛盾的记录。 */
     if (g_abort) {
         printf("[Main] 本轮已被 K2 取消（上传阶段）\n");
+        if (is_retry && !g_drop_round) {
+            /* 补送被中止 ≠ 这一轮作废：音频继续留着待补送（明确丢弃走
+             * K2 长按"舍弃本场"）—— 用户的回答不能因为按了下取消就没了。 */
+            printf("[Main] 音频保留，可按 K2 再次补送\n");
+            set_pending_upload(wav, wav_len);
+        } else {
+            free(wav);
+        }
+        wav = NULL;
         cloud_response_free(&resp);
         app_post_event(EVENT_ERROR);         /* UPLOADING --ERROR--> IDLE */
         return;
     }
+
+    /* 断网体验第 2 层：失败但这轮"多半没送达云端" → 音频留着，网络恢复后
+     * 自动补送 / 按 K2 补送，**不让用户重答**。
+     * 只留传输失败（http_status==0，含连接不上/超时）与 5xx —— 2xx 之后的
+     * 解析失败（JSON / 空 TTS）云端**已经处理过这轮回答**，重送会让同一次
+     * 回答进两次历史，宁可这轮作废也不补送。 */
+    if (rc == CLOUD_ERR_HTTP &&
+        (resp.http_status == 0 || resp.http_status >= 500)) {
+        printf("[Main] 上传未送达云端 —— 音频已保留，网络恢复后自动补送（或按 K2 重试）\n");
+        set_pending_upload(wav, wav_len);
+        wav = NULL;
+        cloud_response_free(&resp);
+        app_post_event(EVENT_UPLOAD_FAIL);   /* -> ERROR；屏幕同时提示"按 K2 重试" */
+        return;
+    }
+
+    free(wav);
+    wav = NULL;
 
     if (rc != CLOUD_OK) {
         cloud_response_free(&resp);
@@ -552,6 +719,8 @@ static void run_one_round(void)
 
 static void *pipeline_worker(void *arg)
 {
+    time_t last_probe = 0;      /* 上次为补送探测网络的时刻（自动补送节流用） */
+
     (void)arg;
 
     /* libcurl 一律只在本线程里用：它需要 200KB 量级的栈
@@ -565,6 +734,9 @@ static void *pipeline_worker(void *arg)
     printf("[Main] 云端健康检查...\n");
     if (cloud_health_check() != CLOUD_OK) {
         printf("[Main] 警告: 云端不可达，请检查 CLOUD_URL 与网络\n");
+        set_net_down(1);        /* 屏幕提示「网络未连接…」——开机没联网不再一声不吭 */
+    } else {
+        set_net_down(0);
     }
 
     /* 账号绑定（2026-10-27）：没绑定就申请一个 token，把二维码 URL 交给主线程。
@@ -581,6 +753,46 @@ static void *pipeline_worker(void *arg)
             publish_bind_url(bind_url);
         } else {
             printf("[Main] 申请绑定二维码失败（不影响面试，重启可再试）\n");
+        }
+    }
+
+    /* 固定话术预缓存（2026-11-02，断网体验第 3 层）：6 句开场白 + 「抱歉，我
+     * 没听清」在线时各合成一次落 /data/tts_cache/，之后断网 / TTS 故障也能
+     * 出声。只补**缺**的文件 —— 第二次开机起零开销、零模型调用。 */
+    {
+        int i;
+
+        for (i = 0; i < APP_ROLE_COUNT; i++) {
+            char key[16];
+            char line[160];
+            uint8_t *wav = NULL;
+            size_t len = 0;
+
+            snprintf(key, sizeof(key), "greet%d", i);
+            if (tts_cache_has(key)) {
+                continue;
+            }
+            snprintf(line, sizeof(line),
+                     "你好，你今天来面试「%s」岗位，请简单介绍一下你自己。",
+                     app_role_at(i));
+            if (cloud_tts_text(line, &wav, &len) == CLOUD_OK) {
+                (void)tts_cache_store(key, wav, len);
+                free(wav);
+                printf("[TTS] 开场白已缓存：%s\n", app_role_at(i));
+            } else {
+                printf("[TTS] 开场白预缓存失败（%s）—— 等在线时再补\n",
+                       app_role_at(i));
+            }
+        }
+        if (!tts_cache_has(TTS_CACHE_NO_HEAR)) {
+            uint8_t *wav = NULL;
+            size_t len = 0;
+
+            if (cloud_tts_text("抱歉，我没听清，请再说一次。", &wav, &len) == CLOUD_OK) {
+                (void)tts_cache_store(TTS_CACHE_NO_HEAR, wav, len);
+                free(wav);
+                printf("[TTS] 「没听清」提示音已缓存\n");
+            }
         }
     }
 
@@ -622,10 +834,38 @@ static void *pipeline_worker(void *arg)
             } else {
                 printf("[Main] Wi-Fi 连接未完成 —— 可在屏幕上重新设置\n");
             }
+            /* 连完立刻判定一次：好了就收掉「网络未连接」提示，没好就留着 */
+            set_net_down(cloud_health_check() != CLOUD_OK);
             continue;
         }
 
         if (cmd != CMD_START) {
+            /* 断网自动补送 + 网络恢复探测（2026-11-02/03）：有待送音频或
+             * 「网络未连接」提示挂着时，隔一阵探一次网络；通了就补送/收提示。
+             * 探测就是一次健康检查（5 秒超时），工作线程里做，不挡按键。 */
+            if (app_has_pending() || app_net_down()) {
+                time_t now = time(NULL);
+
+                if (now - last_probe >= PENDING_PROBE_SEC) {
+                    last_probe = now;
+                    if (cloud_health_check() == CLOUD_OK) {
+                        set_net_down(0);
+                        if (app_has_pending()) {
+                            printf("[Main] 网络已恢复 —— 自动补送上一轮\n");
+                            pthread_mutex_lock(&g_lock);
+                            g_worker_busy = 1;
+                            g_abort = 0;
+                            pthread_mutex_unlock(&g_lock);
+                            run_one_round();
+                            pthread_mutex_lock(&g_lock);
+                            g_worker_busy = 0;
+                            pthread_mutex_unlock(&g_lock);
+                        }
+                    } else {
+                        set_net_down(1);
+                    }
+                }
+            }
             usleep(MAIN_LOOP_MS * 1000 / 2);
             continue;
         }
@@ -724,6 +964,14 @@ static void check_buttons(void)
     if (s1 == 0 && g_key1_last == 1) {
         if (busy) {
             printf("[Main] K1 按下，但正在进行中，忽略\n");
+        } else if (app_has_pending()) {
+            /* 上一轮还没送出去：K1 也优先补送，不录新的（不丢进度、不重答）。
+             * 不投 EVENT_BUTTON_PRESS —— 那会进 RECORDING 空闪；工作线程的
+             * run_one_round 认出 pending 后会投 EVENT_RETRY 直达 UPLOADING。 */
+            printf("[Main] K1 按下 —— 先补送上一轮（不用重答）\n");
+            pthread_mutex_lock(&g_lock);
+            g_cmd = CMD_START;
+            pthread_mutex_unlock(&g_lock);
         } else {
             printf("[Main] K1 按下 —— 开始面试\n");
             pthread_mutex_lock(&g_lock);
@@ -749,6 +997,14 @@ static void check_buttons(void)
             /* 有活在跑：置 abort，工作线程会在 100ms 粒度内退出 */
             printf("[Main] K2 按下 —— 取消当前一轮\n");
             g_abort = 1;
+        } else if (app_has_pending()) {
+            /* 屏幕提示的"按 K2 重试"就是这条（2026-11-02 断网体验）：
+             * 补送上一轮，不录新的。状态迁移由工作线程的 EVENT_RETRY 负责
+             * （ERROR/IDLE -> UPLOADING），这里只投命令。 */
+            printf("[Main] K2 按下 —— 重试补送上一轮（不用重答）\n");
+            pthread_mutex_lock(&g_lock);
+            g_cmd = CMD_START;
+            pthread_mutex_unlock(&g_lock);
         } else if (state_machine_get_current_state() == STATE_ERROR) {
             /* 真的停在错误态，按一下回待机。状态机调用放在锁外：
              * 持锁做 ioctl/printf 没有必要。 */
@@ -802,7 +1058,9 @@ static void check_buttons(void)
             }
             if (g_key2_hold == K2_DISCARD_TICKS) {
                 printf("[Main] K2 长按 —— 舍弃本场（不生成报告，并删除本场记录），回到待机\n");
+                g_drop_round = 1;                /* 在飞的补送也不许再存回来 */
                 g_abort = 1;                     /* 正在录音/上传/播放的话尽快退出 */
+                clear_pending_upload();          /* 保留待补送的音频一并丢弃 */
                 pthread_mutex_lock(&g_lock);
                 strncpy(g_discard_sid, g_session_id, sizeof(g_discard_sid) - 1);
                 g_discard_sid[sizeof(g_discard_sid) - 1] = '\0';
@@ -1141,6 +1399,25 @@ int main(int argc, char *argv[])
         if (live != g_ui_in_session) {
             g_ui_in_session = live;
             interview_ui_set_session(live);
+        }
+
+        /* 断网提示（2026-11-02 第 1 层；11-03 按用户反馈分家）：
+         *   有待补送的音频 → 中央提示条「网络断开，按 K2 重试」（可操作）；
+         *   只是网络不可用 → 左上角**小字**「未联网」—— 中央提示条会挡住
+         *   屏幕主要内容（用户反馈），联网状态改用不遮挡的小字。
+         * 都跟着状态标志自愈：补送成功 / 舍弃本场 / 网络恢复自动收起。 */
+        {
+            int pend = app_has_pending();
+            int down = app_net_down();
+
+            if (pend != g_ui_hint_visible) {
+                g_ui_hint_visible = pend;
+                interview_ui_set_hint(pend ? "网络断开，按 K2 重试" : NULL);
+            }
+            if (down != g_ui_net_shown) {
+                g_ui_net_shown = down;
+                interview_ui_set_net_status(down ? "未联网" : NULL);
+            }
         }
 
         /* 空闲时输入 `nsh` 回车可进命令行（exit 返回）。 */

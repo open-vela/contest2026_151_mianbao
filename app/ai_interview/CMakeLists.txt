@@ -13,6 +13,7 @@ if(CONFIG_APP_AI_INTERVIEW)
     audio_io.c
     interview_ui.c
     wifi_connect.c
+    tts_cache.c
     DEPENDS
     lvgl
     STACKSIZE
