@@ -163,7 +163,7 @@ class TestPlanMatchesThePrompt(unittest.TestCase):
         prompt = self.skill["system_prompt"]
         self.assertIn("{stage_block}", prompt, "占位符不在，阶段注入不进去")
         self.assertTrue(prompt.rstrip().endswith(
-            "正确示例：能挑一个项目，具体说说您在其中负责哪一块，以及遇到的最大挑战吗？"),
+            "正确示例：能挑一个项目，具体说说你在其中负责哪一块，以及遇到的最大挑战吗？"),
             "【硬性要求】那段不在结尾了 —— 见台账 §11.20")
         self.assertLess(prompt.index("【面试纪律】"), prompt.index("{stage_block}"),
                         "阶段块应当排在【面试纪律】之后")

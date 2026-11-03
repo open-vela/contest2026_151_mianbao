@@ -1184,11 +1184,11 @@
       .then(function (all) {
         var points = all.points || [];
         var scored = points.filter(function (p) { return typeof p.total === "number"; });
-        if (!scored.length) { renderGrowthEmpty(); return; }
         var roles = [];
         for (var i = 0; i < points.length; i++) {
           if (points[i].role && roles.indexOf(points[i].role) < 0) { roles.push(points[i].role); }
         }
+        if (!scored.length) { renderGrowthEmpty(growthRole, roles, 0); return; }
         if (!growthRole || roles.indexOf(growthRole) < 0) {
           growthRole = scored[scored.length - 1].role || "";
         }
@@ -1205,19 +1205,50 @@
       .catch(function () { /* 同上 */ });
   }
 
-  function renderGrowthEmpty() {
+  // 标题行（含岗位选择器）—— 两条渲染路径共用。
+  // 2026-11-03 修：原来空态不带选择器，选到不足 2 场的岗位后模块"消失"且切不
+  // 回去，必须刷新 —— 现在**任何状态下选择器都在**，随手切回。
+  function growthHeadHtml(role, roles, sub) {
+    var html = '<div class="growth-head"><h2>成长追踪</h2>' +
+      '<span class="growth-sub">' + esc((role || "全部岗位") + (sub ? " · " + sub : "")) + '</span>';
+    if (roles && roles.length > 1) {
+      html += '<select class="growth-role" id="growthRole">';
+      for (var k = 0; k < roles.length; k++) {
+        html += '<option value="' + esc(roles[k]) + '"' +
+          (roles[k] === role ? " selected" : "") + '>' + esc(roles[k]) + '</option>';
+      }
+      html += '</select>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindGrowthSelector(roles) {
+    var sel = document.getElementById("growthRole");
+    if (sel) {
+      sel.onchange = function () {
+        growthRole = sel.value;
+        loadGrowthFor(sel.value, roles || []);
+      };
+    }
+  }
+
+  function renderGrowthEmpty(role, roles, count) {
+    var msg = role
+      ? "「" + role + "」带评分的面试只有 " + (count || 0) + " 场 —— 完成 2 场后这里会画出进步曲线，也可切换其他岗位"
+      : "完成 2 场带评分的面试后，这里会画出你的进步曲线";
     elGrowth.style.display = "block";
     elGrowth.innerHTML =
       '<div class="growth">' +
-        '<div class="growth-head"><h2>成长追踪</h2>' +
-          '<span class="growth-sub">完成 2 场带评分的面试后，这里会画出你的进步曲线</span>' +
-        '</div>' +
+        growthHeadHtml(role, roles, "") +
+        '<div class="growth-note">' + esc(msg) + '</div>' +
       '</div>';
+    bindGrowthSelector(roles || []);
   }
 
   function renderGrowth(d, role, roles) {
     var points = (d.points || []).filter(function (p) { return typeof p.total === "number"; });
-    if (points.length < 2) { renderGrowthEmpty(); return; }
+    if (points.length < 2) { renderGrowthEmpty(role, roles, points.length); return; }
 
     var W = 640, H = 190, L = 34, R = 14, T = 14, B = 26;
     var iw = W - L - R, ih = H - T - B;
@@ -1260,17 +1291,7 @@
     svg += '</svg>';
 
     var html = '<div class="growth">' +
-      '<div class="growth-head"><h2>成长追踪</h2>' +
-        '<span class="growth-sub">' + esc(role || "全部岗位") + ' · ' + points.length + ' 场</span>';
-    if (roles && roles.length > 1) {
-      html += '<select class="growth-role" id="growthRole">';
-      for (var k = 0; k < roles.length; k++) {
-        html += '<option value="' + esc(roles[k]) + '"' +
-          (roles[k] === role ? " selected" : "") + '>' + esc(roles[k]) + '</option>';
-      }
-      html += '</select>';
-    }
-    html += '</div>';
+      growthHeadHtml(role, roles, points.length + " 场");
     html += '<div class="growth-chart">' + svg +
       '<div class="growth-tip" id="growthTip"></div></div>';
 
@@ -1336,13 +1357,7 @@
     elGrowth.style.display = "block";
     elGrowth.innerHTML = html;
 
-    var sel = document.getElementById("growthRole");
-    if (sel) {
-      sel.onchange = function () {
-        growthRole = sel.value;
-        loadGrowthFor(sel.value, roles);
-      };
-    }
+    bindGrowthSelector(roles);
 
     // 悬停提示：点数少，点级 hover 足够（不用十字线）。
     var tip = document.getElementById("growthTip");
