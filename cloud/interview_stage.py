@@ -138,7 +138,7 @@ def uses_question_bank(key) -> bool:
 #
 # 这一句是整场里**唯一可以不靠模型**的话：它没有个性化内容，就是要请对方提问。
 # 所以判据能定死的就别交给模型 —— 同 reply_guard / report_guard 的取舍。
-ASK_BACK_FALLBACK = "好的，我的问题问完了。您有什么想问我的吗？"
+ASK_BACK_FALLBACK = "好的，我的问题问完了。你有什么想问我的吗？"
 
 
 def is_ask_back(text) -> bool:

@@ -720,7 +720,7 @@ def check_timeout(role: str, timeout_duration: int, partial_answer: str = "") ->
     """
     skill = load_skill("check_timeout")
     if not skill:
-        return {"text": "您思考的时间比较长了，可以先简单回答一下吗？", "next_action": "continue"}
+        return {"text": "你思考的时间比较长了，可以先简单回答一下吗？", "next_action": "continue"}
 
     system_prompt = skill["system_prompt"].replace("{role}", role).replace("{timeout_duration}", str(timeout_duration))
 
@@ -740,7 +740,7 @@ def check_timeout(role: str, timeout_duration: int, partial_answer: str = "") ->
     if result:
         return {"text": result, "next_action": "continue"}
     else:
-        return {"text": "您思考的时间比较长了，可以先简单回答一下吗？", "next_action": "continue"}
+        return {"text": "你思考的时间比较长了，可以先简单回答一下吗？", "next_action": "continue"}
 
 
 # ============================================================
