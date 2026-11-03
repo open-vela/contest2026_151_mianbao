@@ -53,6 +53,13 @@ static lv_obj_t *g_idle_volume;
 static lv_obj_t *g_live_volume;
 static lv_obj_t *g_idle_rounds;
 static void (*g_volume_cb)(int delta);
+
+/* 断网提示条（2026-11-02）：悬浮在任何页面之上，见 interview_ui_set_hint */
+static lv_obj_t *g_hint_banner;
+static lv_obj_t *g_hint_label;
+
+/* 联网状态小字（2026-11-03）：左上角，不挡内容，见 interview_ui_set_net_status */
+static lv_obj_t *g_net_status;
 static ui_rounds_cb_t g_rounds_cb;
 
 static const lv_font_t *g_font_title;
@@ -162,16 +169,21 @@ static lv_obj_t *make_rounds_button(lv_obj_t *parent, const char *text,
     return btn;
 }
 
-/* 一排「− 轮数：10 +」；和音量排同款交互（2026-11-01 用户要求）。 */
+/* 一排「− 轮数：10 +」；和音量排同款交互（2026-11-01 用户要求）。
+ *
+ * 位置几经周折（2026-11-03）：左上角贴边 → 顶部居中，用户反馈**顶部区域都
+ * 不好点**（"点了没反应"，音量排在底部却一直好按）—— 现在放在**音量排正上方**，
+ * 用底部这个已被验证的触控区；按钮 34→46（小屏 28→38）也保留。 */
 static void build_rounds_row(lv_obj_t *parent, int compact)
 {
-    int size = compact ? 28 : 34;
+    int size = compact ? 38 : 46;
     lv_obj_t *row = lv_obj_create(parent);
     lv_obj_t *minus;
     lv_obj_t *plus;
 
-    lv_obj_set_size(row, compact ? 150 : 190, compact ? 32 : 40);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, compact ? 4 : 12, compact ? 6 : 12);
+    lv_obj_set_size(row, compact ? 200 : 250, compact ? 46 : 56);
+    /* 贴着音量排上方摆：音量排顶边在 -(边距+高度) = -80/-50，再留 6px 间距 */
+    lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, compact ? -56 : -86);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_pad_all(row, 0, 0);
@@ -259,33 +271,37 @@ static int32_t ui_height(void)
 
 static void build_idle_page(void)
 {
-    /* 小屏（<480 高）用紧凑坐标：常规布局的 +120/+172 会直接落到屏外。 */
+    /* 小屏（<480 高）用紧凑坐标。 */
     int compact = ui_height() > 0 && ui_height() < 480;
 
     g_page_idle = make_page();
 
+    /* 文字全部**从顶部往下排**（2026-11-03）：原来按屏幕中心偏移摆（-120…+172），
+     * 真机屏高比假设的矮，轮数排挪到音量排上方后「按 K3…」那行和它叠上了 ——
+     * 中心偏移对屏高太敏感。改成 TOP_MID 起排：任何屏高都贴着顶部，
+     * 与底部的轮数/音量控件区天然分开。 */
     /* 产品名。队伍一行与串口横幅同款，评委对着屏就能对上号。 */
     make_label(g_page_idle, "AI 模拟面试官", g_font_title, UI_TEXT_COLOR,
-               LV_ALIGN_CENTER, 0, compact ? -70 : -120);
+               LV_ALIGN_TOP_MID, 0, compact ? 30 : 56);
     make_label(g_page_idle, "contest2026_151 · mianbao", g_font_hint, UI_HINT_COLOR,
-               LV_ALIGN_CENTER, 0, compact ? -38 : -58);
+               LV_ALIGN_TOP_MID, 0, compact ? 74 : 118);
 
     /* 岗位：K3 切换后这一行立刻跟着变 —— "岗位可视化"就落在这里 */
     g_idle_role = make_label(g_page_idle, "当前岗位：", g_font_body, UI_ROLE_COLOR,
-                             LV_ALIGN_CENTER, 0, compact ? 6 : 30);
+                             LV_ALIGN_TOP_MID, 0, compact ? 118 : 186);
 
     /* 压力档位：赛前按 K2 循环切换 —— 与岗位一起构成"开面参数" */
     g_idle_pressure = make_label(g_page_idle, "压力档位：标准（按 K2 切换）",
                                  g_font_hint, UI_HINT_COLOR,
-                                 LV_ALIGN_CENTER, 0, compact ? 38 : 82);
+                                 LV_ALIGN_TOP_MID, 0, compact ? 154 : 238);
 
     make_label(g_page_idle, "按 K1 开始面试", g_font_body, UI_TEXT_COLOR,
-               LV_ALIGN_CENTER, 0, compact ? 70 : 120);
+               LV_ALIGN_TOP_MID, 0, compact ? 190 : 290);
 
     /* 小屏放不下这一行提示 —— K3 的用法在 README 与串口里都有。 */
     if (!compact) {
         make_label(g_page_idle, "按 K3 切换岗位（两场面试之间）", g_font_hint,
-                   UI_HINT_COLOR, LV_ALIGN_CENTER, 0, 172);
+                   UI_HINT_COLOR, LV_ALIGN_TOP_MID, 0, 342);
     }
 
     /* 触摸音量：待机页就能调好，面试中页也有一排（见 build_live_page） */
@@ -554,6 +570,50 @@ void interview_ui_show_bind(const char *url)
     }
 }
 
+/* ---------- 断网提示条（2026-11-02）---------- */
+/*
+ * 一个压在所有页面之上的提示框（深红底白字）。只在需要时显示 ——
+ * 断网补送的口径是"说清楚"（台账 §11.65 第 1 层）：屏幕直接显示
+ * "网络断开，按 K2 重试"，不再只有 LED 三短闪。
+ */
+static void build_hint_banner(void)
+{
+    lv_obj_t *box = lv_obj_create(lv_screen_active());
+
+    lv_obj_set_size(box, LV_PCT(72), LV_SIZE_CONTENT);
+    lv_obj_center(box);
+    lv_obj_set_style_bg_color(box, lv_color_hex(0x8B1E1E), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(box, 14, 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(0xFFB0B0), 0);
+    lv_obj_set_style_pad_ver(box, 16, 0);
+    lv_obj_set_style_pad_hor(box, 20, 0);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    g_hint_label = lv_label_create(box);
+    lv_label_set_long_mode(g_hint_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(g_hint_label, LV_PCT(100));
+    lv_label_set_text(g_hint_label, "");
+    lv_obj_set_style_text_font(g_hint_label, g_font_body, 0);
+    lv_obj_set_style_text_color(g_hint_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(g_hint_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+    g_hint_banner = box;
+}
+
+/* 联网状态小字：左上角一行（"未联网"），不遮挡任何内容。 */
+static void build_net_status(void)
+{
+    g_net_status = lv_label_create(lv_screen_active());
+    lv_label_set_text(g_net_status, "");
+    lv_obj_set_style_text_font(g_net_status, g_font_hint, 0);
+    lv_obj_set_style_text_color(g_net_status, lv_color_hex(UI_HINT_COLOR), 0);
+    lv_obj_align(g_net_status, LV_ALIGN_TOP_LEFT, 10, 8);
+    lv_obj_add_flag(g_net_status, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* ---------- 对外接口 ---------- */
 
 int interview_ui_init(void)
@@ -610,6 +670,8 @@ int interview_ui_init(void)
     build_live_page();
     build_wifi_page();
     build_bind_page();
+    build_hint_banner();   /* 最后建 —— 天然压在所有页面之上 */
+    build_net_status();
 
     g_ready = 1;
     g_in_session = 0;
@@ -620,10 +682,48 @@ int interview_ui_init(void)
 void interview_ui_pump(void)
 {
     if (g_ready) {
+        /* 提示条/状态小字要压在任何页面之上 —— 切页动作会把页面 move_foreground，
+         * 这里在它们显示期间跟着再提一次（只是换子对象顺序，代价可忽略）。 */
+        if (g_hint_banner != NULL &&
+            !lv_obj_has_flag(g_hint_banner, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_move_foreground(g_hint_banner);
+        }
+        if (g_net_status != NULL &&
+            !lv_obj_has_flag(g_net_status, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_move_foreground(g_net_status);
+        }
         /* 返回的"距下次刷新毫秒数"这里不用 —— 主循环 100ms 一拍，
          * 界面是静态文字，10Hz 足够（头文件里有取舍说明）。 */
         lv_timer_handler();
     }
+}
+
+void interview_ui_set_hint(const char *text)
+{
+    if (!g_ready || g_hint_banner == NULL) {
+        return;
+    }
+    if (text == NULL || text[0] == '\0') {
+        lv_obj_add_flag(g_hint_banner, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_label_set_text(g_hint_label, text);
+    lv_obj_move_foreground(g_hint_banner);
+    lv_obj_remove_flag(g_hint_banner, LV_OBJ_FLAG_HIDDEN);
+}
+
+void interview_ui_set_net_status(const char *text)
+{
+    if (!g_ready || g_net_status == NULL) {
+        return;
+    }
+    if (text == NULL || text[0] == '\0') {
+        lv_obj_add_flag(g_net_status, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_label_set_text(g_net_status, text);
+    lv_obj_move_foreground(g_net_status);
+    lv_obj_remove_flag(g_net_status, LV_OBJ_FLAG_HIDDEN);
 }
 
 void interview_ui_set_role(const char *role)

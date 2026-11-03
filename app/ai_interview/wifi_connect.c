@@ -16,7 +16,8 @@
  *
  * 凭据安全：
  *   * **密码绝不打印、绝不写进仓库**；
- *   * 凭据只来自环境变量、串口首次配置或 /data/ai_interview_wifi；
+ *   * 凭据只来自环境变量、串口配置或屏幕配网页，**只存内存、不落盘**
+ *     （2026-11-03 删掉记忆功能：坏凭据会被记住导致永远连不上，见下方注释）；
  *   * 涉及密码的命令只打固定标签，日志里不出现明文；
  *   * 字符白名单校验（拒绝空格/引号/分号/管道等），避免配置被误写。
  */
@@ -78,17 +79,33 @@ static int cred_ok(const char *s)
     return 1;
 }
 
-static int persist_creds(const char *ssid, const char *psk)
-{
-    FILE *fp = fopen(WIFI_PREF_PATH, "w");
+/* ---- 凭据存储：**只存内存**（2026-11-03 用户决定删掉"记忆"）----
+ *
+ * 原来凭据落盘 /data/ai_interview_wifi —— 一旦存的是**坏凭据**（密码打错 /
+ * 热点换了），复位、重连都会自动用那份坏的，永远连不上、也不再问用户，
+ * 连锁卡死。现在：
+ *   * 凭据只活在本次启动的内存里，**每次开机重新问**；
+ *   * 开机顺手清掉旧的 /data/ai_interview_wifi（把以前记住的坏凭据也清掉）；
+ *   * 环境变量 WIFI_SSID / WIFI_PSK 仍可用（调试、免输入），同样不落盘。
+ */
+static char g_ssid[WIFI_CRED_MAX];
+static char g_psk[WIFI_CRED_MAX];
 
-    if (fp == NULL) {
-        printf("[Wifi] 提示: 无法写入 %s（下次仍需重新设置）\n", WIFI_PREF_PATH);
-        return -1;
+static void forget_stale_file(void)
+{
+    if (remove(WIFI_PREF_PATH) == 0) {
+        printf("[Wifi] 已清除旧的记忆凭据 %s（不再自动沿用）\n", WIFI_PREF_PATH);
     }
-    fprintf(fp, "%s\n%s\n", ssid, psk);
-    fclose(fp);
-    printf("[Wifi] 凭据已保存到 %s（下次开机自动使用）\n", WIFI_PREF_PATH);
+}
+
+static int store_creds(const char *ssid, const char *psk)
+{
+    strncpy(g_ssid, ssid, WIFI_CRED_MAX - 1);
+    g_ssid[WIFI_CRED_MAX - 1] = '\0';
+    strncpy(g_psk, psk, WIFI_CRED_MAX - 1);
+    g_psk[WIFI_CRED_MAX - 1] = '\0';
+    forget_stale_file();
+    printf("[Wifi] 凭据已存入内存（仅本次有效，下次开机重新问）\n");
     return 0;
 }
 
@@ -96,7 +113,6 @@ static int load_creds(char *ssid, char *psk)
 {
     const char *env_ssid = getenv("WIFI_SSID");
     const char *env_psk  = getenv("WIFI_PSK");
-    FILE *fp;
 
     if (env_ssid != NULL && env_ssid[0] != '\0' &&
         env_psk != NULL && env_psk[0] != '\0') {
@@ -105,26 +121,17 @@ static int load_creds(char *ssid, char *psk)
         ssid[WIFI_CRED_MAX - 1] = '\0';
         psk[WIFI_CRED_MAX - 1] = '\0';
         printf("[Wifi] 凭据来源: 环境变量 WIFI_SSID / WIFI_PSK\n");
-        (void)persist_creds(ssid, psk);   /* 首次设了环境变量就记住 */
         return 0;
     }
 
-    fp = fopen(WIFI_PREF_PATH, "r");
-    if (fp == NULL) {
+    if (g_ssid[0] == '\0' || g_psk[0] == '\0') {
         return -1;
     }
-    if (fgets(ssid, WIFI_CRED_MAX, fp) == NULL ||
-        fgets(psk, WIFI_CRED_MAX, fp) == NULL) {
-        fclose(fp);
-        return -1;
-    }
-    fclose(fp);
-    trim(ssid);
-    trim(psk);
-    if (ssid[0] == '\0' || psk[0] == '\0') {
-        return -1;
-    }
-    printf("[Wifi] 凭据来源: %s\n", WIFI_PREF_PATH);
+    strncpy(ssid, g_ssid, WIFI_CRED_MAX - 1);
+    strncpy(psk, g_psk, WIFI_CRED_MAX - 1);
+    ssid[WIFI_CRED_MAX - 1] = '\0';
+    psk[WIFI_CRED_MAX - 1] = '\0';
+    printf("[Wifi] 凭据来源: 本次启动的内存（串口/屏幕配置）\n");
     return 0;
 }
 
@@ -177,7 +184,7 @@ int wifi_save_creds(const char *ssid, const char *psk)
         printf("[Wifi] 凭据不合法（空或含不支持字符），未保存\n");
         return -2;
     }
-    return persist_creds(ssid, psk);
+    return store_creds(ssid, psk);
 }
 
 int wifi_connect_boot(void)
@@ -317,9 +324,11 @@ int wifi_serial_setup(void)
         return -1;
     }
 
+    forget_stale_file();   /* 旧的记忆凭据一并清掉（2026-11-03 删记忆功能） */
+
     printf("\n");
     printf("========================================\n");
-    printf("  首次使用：配置 Wi-Fi\n");
+    printf("  配置 Wi-Fi（不记忆，每次开机重新输入）\n");
     printf("  直接回车可跳过（之后可在屏幕右上角 Wi-Fi 重设）\n");
     printf("========================================\n");
 
@@ -350,11 +359,11 @@ int wifi_serial_setup(void)
             continue;
         }
 
-        if (persist_creds(ssid, psk) != 0) {
+        if (store_creds(ssid, psk) != 0) {
             return -1;
         }
 
-        printf("[Wifi] 已保存热点「%s」，开始连接...\n", ssid);
+        printf("[Wifi] 已配置热点「%s」（本次有效），开始连接...\n", ssid);
         return 0;
     }
 

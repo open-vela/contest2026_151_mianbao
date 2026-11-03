@@ -77,4 +77,17 @@ void interview_ui_show_wifi(int show);
  */
 void interview_ui_show_bind(const char *url);
 
+/*
+ * 断网提示条（2026-11-02）：悬浮在任何页面之上的提示（"网络断开，按 K2 重试"）。
+ * text 为 NULL/空 → 收起。只在主线程调用（同本文件其它接口）。
+ */
+void interview_ui_set_hint(const char *text);
+
+/*
+ * 联网状态小字（2026-11-03）：左上角一行小字（"未联网"），**不遮挡**页面内容 ——
+ * 中央提示条留给「按 K2 重试」这类可操作提示，普通状态用小字（用户反馈中央
+ * 提示条把主要内容盖住了）。text 为 NULL/空 → 隐藏。只在主线程调用。
+ */
+void interview_ui_set_net_status(const char *text);
+
 #endif /* __INTERVIEW_UI_H__ */
